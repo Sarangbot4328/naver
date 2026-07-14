@@ -40,6 +40,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_viewer);
+        SystemBarInsets.apply(this, findViewById(R.id.viewer_root), false);
         titleId = getIntent().getStringExtra("title_id");
         int episodeNo = getIntent().getIntExtra("episode_no", -1);
         if (titleId == null || episodeNo < 0) { finish(); return; }

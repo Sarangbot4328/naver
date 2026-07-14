@@ -22,7 +22,7 @@ public final class NaverApi {
     private static final String UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36";
     private static final Pattern IMAGE_PATTERN = Pattern.compile(
-            "https://image-comic\\.pstatic\\.net/webtoon/\\d+/\\d+/[^\\\"'\\s<>]+?\\.(?:jpg|jpeg|png|webp)",
+            "https://image-comic\\.pstatic\\.net/(?:webtoon|mobilewebimg)/\\d+/\\d+/[^\\\"'\\s<>]+?\\.(?:jpg|jpeg|png|webp)",
             Pattern.CASE_INSENSITIVE);
 
     public static final class SeriesInfo {
@@ -102,10 +102,11 @@ public final class NaverApi {
         String html = getText(detail, listUrl(titleId, segment), cookie);
         Matcher matcher = IMAGE_PATTERN.matcher(html.replace("\\/", "/"));
         Set<String> urls = new LinkedHashSet<>();
-        String marker = "/webtoon/" + titleId + "/" + episode + "/";
+        String webtoonMarker = "/webtoon/" + titleId + "/" + episode + "/";
+        String mobileMarker = "/mobilewebimg/" + titleId + "/" + episode + "/";
         while (matcher.find()) {
             String value = matcher.group().replace("\\/", "/").replace("&amp;", "&").replace("\\u0026", "&");
-            if (!value.contains(marker)) continue;
+            if (!value.contains(webtoonMarker) && !value.contains(mobileMarker)) continue;
             if (value.matches("(?i).*?(thumbnail|age_|img-ctguide|static/agerate).*")) continue;
             urls.add(value);
         }

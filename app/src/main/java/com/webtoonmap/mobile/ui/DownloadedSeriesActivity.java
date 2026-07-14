@@ -23,6 +23,7 @@ public final class DownloadedSeriesActivity extends AppCompatActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_series);
+        SystemBarInsets.apply(this, findViewById(R.id.series_root), true);
         String titleId = getIntent().getStringExtra("title_id");
         if (titleId == null) { finish(); return; }
 

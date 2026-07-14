@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat;
 import com.webtoonmap.mobile.ui.DownloadChannelView;
 import com.webtoonmap.mobile.ui.NaverChannelView;
 import com.webtoonmap.mobile.ui.SettingsChannelView;
+import com.webtoonmap.mobile.ui.SystemBarInsets;
 import com.webtoonmap.mobile.storage.StorageSettings;
 
 public final class MainActivity extends AppCompatActivity {
@@ -47,6 +48,7 @@ public final class MainActivity extends AppCompatActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_main);
+        SystemBarInsets.apply(this, findViewById(R.id.main_root), true);
         content = findViewById(R.id.content);
         naverButton = findViewById(R.id.nav_naver);
         downloadsButton = findViewById(R.id.nav_downloads);

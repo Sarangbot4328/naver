@@ -6,11 +6,11 @@
     android:orientation="horizontal" android:padding="12dp">
     <ImageView android:id="@+id/thumbnail" android:layout_width="82dp" android:layout_height="106dp"
         android:background="@color/divider" android:contentDescription="작품 썸네일" android:scaleType="centerCrop" />
-    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent"
-        android:layout_marginStart="14dp" android:layout_weight="1" android:gravity="center_vertical"
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_marginStart="14dp" android:layout_weight="1"
         android:orientation="vertical">
         <TextView android:id="@+id/title" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:maxLines="2" android:textColor="@color/text_primary" android:textSize="17sp" android:textStyle="bold" />
+            android:ellipsize="end" android:maxLines="3" android:textColor="@color/text_primary" android:textSize="17sp" android:textStyle="bold" />
         <TextView android:id="@+id/tags" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="7dp" android:maxLines="2" android:textColor="@color/green_dark" android:textSize="12sp" />
         <TextView android:id="@+id/count" android:layout_width="match_parent" android:layout_height="wrap_content"
