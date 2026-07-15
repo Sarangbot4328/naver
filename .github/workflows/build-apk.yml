@@ -13,9 +13,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Validate Telegram activation secrets
+        shell: bash
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_ADMIN_CHAT_ID" ]; then
+            echo "::error::TELEGRAM_BOT_TOKEN and TELEGRAM_ADMIN_CHAT_ID repository secrets are required."
+            exit 1
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
