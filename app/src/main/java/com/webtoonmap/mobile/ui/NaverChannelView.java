@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat;
 import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
+import com.webtoonmap.mobile.download.SourceJobStore;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 
@@ -33,9 +34,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class NaverChannelView extends FrameLayout {
-    private static final String NAVER_HOME = "https://comic.naver.com/webtoon";
     private final MainActivity activity;
-    private final boolean joatoon;
+    private final String source;
     private final String homeUrl;
     private final String allowedHost;
     private final WebView webView;
@@ -55,8 +55,8 @@ public final class NaverChannelView extends FrameLayout {
     public NaverChannelView(MainActivity activity) {
         super(activity);
         this.activity = activity;
-        joatoon = SourceSettings.isJoatoon(activity);
-        homeUrl = joatoon ? SourceSettings.getJoatoonUrl(activity) : NAVER_HOME;
+        source = SourceSettings.getSource(activity);
+        homeUrl = SourceSettings.homeUrl(activity);
         allowedHost = Uri.parse(homeUrl).getHost();
         setBackgroundColor(Color.WHITE);
 
@@ -111,7 +111,9 @@ public final class NaverChannelView extends FrameLayout {
         settings.setLoadsImagesAutomatically(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setBuiltInZoomControls(false);
-        if (joatoon) settings.setUserAgentString(JoatoonApi.USER_AGENT);
+        if (!SourceSettings.SOURCE_NAVER.equals(source)) {
+            settings.setUserAgentString(JoatoonApi.USER_AGENT);
+        }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
@@ -126,10 +128,11 @@ public final class NaverChannelView extends FrameLayout {
                 Uri uri = request.getUrl();
                 String host = uri.getHost();
                 if (host == null) return true;
-                if (!joatoon && (host.equals("comic.naver.com") || host.endsWith(".naver.com"))) {
+                if (SourceSettings.SOURCE_NAVER.equals(source) &&
+                        (host.equals("comic.naver.com") || host.endsWith(".naver.com"))) {
                     return false;
                 }
-                if (joatoon && allowedHost != null &&
+                if (!SourceSettings.SOURCE_NAVER.equals(source) && allowedHost != null &&
                         (host.equalsIgnoreCase(allowedHost) || host.endsWith("." + allowedHost))) {
                     return false;
                 }
@@ -192,10 +195,12 @@ public final class NaverChannelView extends FrameLayout {
                 .setTitle(queueMode ? "대기열 추가" : "전체 다운로드")
                 .setMessage(queueMode ?
                         "현재 작품을 다운로드 대기열에 추가합니다. 앞 작품의 다운로드가 끝나면 자동으로 시작합니다." :
-                        (joatoon ? "현재 작품의 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다." :
+                        (!SourceSettings.SOURCE_NAVER.equals(source) ?
+                                "현재 작품의 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다." :
                                 "현재 이용 가능한 공개 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다."))
                 .setNegativeButton("취소", null)
                 .setPositiveButton(queueMode ? "대기열" : "시작", (dialog, which) -> {
+                    registerSourceJob(titleId, webView.getUrl());
                     boolean added = SeriesDownloadService.enqueue(activity, titleId);
                     Toast.makeText(activity, queueMode ? "대기열에 추가했습니다." :
                             "다운로드를 시작했습니다.", Toast.LENGTH_SHORT).show();
@@ -214,11 +219,40 @@ public final class NaverChannelView extends FrameLayout {
 
     private String seriesKeyFrom(String url) {
         if (url == null) return null;
-        if (joatoon) {
+        if (SourceSettings.SOURCE_JOATOON.equals(source)) {
             try {
                 Matcher matcher = Pattern.compile("/toon/w/(\\d+)(?:/|$)", Pattern.CASE_INSENSITIVE)
                         .matcher(Uri.parse(url).getPath());
                 return matcher.find() ? JoatoonApi.seriesKey(matcher.group(1)) : null;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        if (SourceSettings.SOURCE_MANHWABANG.equals(source)) {
+            try {
+                Uri uri = Uri.parse(url);
+                Matcher matcher = Pattern.compile("^/(webtoon|manhua)/eps_list/?$",
+                        Pattern.CASE_INSENSITIVE).matcher(uri.getPath());
+                String id = uri.getQueryParameter("id");
+                if (!matcher.find() || id == null || !id.matches("\\d+")) return null;
+                return SourceJobStore.keyFor(SourceSettings.SOURCE_MANHWABANG,
+                        matcher.group(1).toLowerCase() + ":" + id);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
+            try {
+                Uri uri = Uri.parse(url);
+                if (uri.getQueryParameter("wr_id") != null) return null;
+                String table = uri.getQueryParameter("bo_table");
+                if (table != null && !table.equalsIgnoreCase("toons") &&
+                        !table.equalsIgnoreCase("cartoonson")) return null;
+                String id = uri.getQueryParameter("is");
+                if (id == null || id.trim().isEmpty()) id = uri.getQueryParameter("stx");
+                if (id == null || id.trim().isEmpty()) return null;
+                return SourceJobStore.keyFor(SourceSettings.SOURCE_ILILTOON,
+                        (table == null ? "toons" : table.toLowerCase()) + ":" + id.trim());
             } catch (Exception ignored) {
                 return null;
             }
@@ -229,6 +263,28 @@ public final class NaverChannelView extends FrameLayout {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private void registerSourceJob(String key, String pageUrl) {
+        if (key == null || pageUrl == null) return;
+        try {
+            Uri uri = Uri.parse(pageUrl);
+            if (SourceSettings.SOURCE_MANHWABANG.equals(source)) {
+                String path = uri.getPath();
+                Matcher matcher = Pattern.compile("^/(webtoon|manhua)/eps_list/?$",
+                        Pattern.CASE_INSENSITIVE).matcher(path == null ? "" : path);
+                String id = uri.getQueryParameter("id");
+                if (matcher.find() && id != null) {
+                    SourceJobStore.register(activity, key, source, pageUrl, id,
+                            matcher.group(1).toLowerCase());
+                }
+            } else if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
+                String id = uri.getQueryParameter("is");
+                if (id == null || id.isEmpty()) id = uri.getQueryParameter("stx");
+                SourceJobStore.register(activity, key, source, pageUrl, id,
+                        uri.getQueryParameter("bo_table"));
+            }
+        } catch (Exception ignored) { }
     }
 
     public boolean canGoBack() { return webView.canGoBack(); }

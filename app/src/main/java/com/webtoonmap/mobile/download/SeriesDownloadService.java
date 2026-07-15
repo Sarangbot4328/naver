@@ -19,8 +19,11 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
+import com.webtoonmap.mobile.ililtoon.IliltoonApi;
+import com.webtoonmap.mobile.manhwabang.ManhwabangApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.naver.NaverApi;
+import com.webtoonmap.mobile.network.NetworkRetry;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
@@ -96,7 +99,7 @@ public final class SeriesDownloadService extends Service {
             if (RUNNING.get()) {
                 cancelRequested.set(true);
                 Thread thread = workerThread;
-                if (thread != null) thread.interrupt();
+                NetworkRetry.cancel(thread);
                 broadcast("전체 다운로드와 대기열을 중단하는 중…", false, false);
             } else {
                 stopForeground(STOP_FOREGROUND_REMOVE);
@@ -169,7 +172,11 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void downloadOne(String titleId) throws Exception {
-        if (JoatoonApi.isSeriesKey(titleId)) {
+        if (ManhwabangApi.isSeriesKey(titleId)) {
+            downloadManhwabang(titleId);
+        } else if (IliltoonApi.isSeriesKey(titleId)) {
+            downloadIliltoon(titleId);
+        } else if (JoatoonApi.isSeriesKey(titleId)) {
             downloadJoatoon(titleId);
         } else {
             downloadNaver(titleId);
@@ -331,6 +338,182 @@ public final class SeriesDownloadService extends Service {
         broadcast("조아툰 다운로드 완료", true, false);
     }
 
+
+    private interface ExternalSiteApi {
+        List<String> fetchImages(String episodeUrl) throws Exception;
+        byte[] downloadBytes(String imageUrl, String referer) throws Exception;
+    }
+
+    private static final class ExternalEpisode {
+        final int number;
+        final String title;
+        final String url;
+
+        ExternalEpisode(int number, String title, String url) {
+            this.number = number;
+            this.title = title;
+            this.url = url;
+        }
+    }
+
+    private void downloadManhwabang(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        if (job == null) {
+            throw new IllegalStateException("만화방 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String baseUrl = SourceSettings.getManhwabangUrl(this);
+        String pageUrl = job.pageUrl(baseUrl);
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("만화방 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        ManhwabangApi.SeriesInfo info =
+                ManhwabangApi.fetchSeriesInfo(pageUrl, job.kind, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        for (ManhwabangApi.EpisodeMeta episode : info.episodes) {
+            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
+        }
+        downloadExternalSeries(titleId, "만화방", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, episodes, new ExternalSiteApi() {
+                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
+                        return ManhwabangApi.fetchEpisodeImages(episodeUrl, cookie);
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer)
+                            throws Exception {
+                        return ManhwabangApi.downloadBytes(imageUrl, referer, cookie);
+                    }
+                });
+    }
+
+    private void downloadIliltoon(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        if (job == null) {
+            throw new IllegalStateException("일일툰 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String baseUrl = SourceSettings.getIliltoonUrl(this);
+        String pageUrl = job.pageUrl(baseUrl);
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("일일툰 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        IliltoonApi.SeriesInfo info = IliltoonApi.fetchSeriesInfo(pageUrl, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        for (IliltoonApi.EpisodeMeta episode : info.episodes) {
+            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
+        }
+        downloadExternalSeries(titleId, "일일툰", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, episodes, new ExternalSiteApi() {
+                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
+                        return IliltoonApi.fetchEpisodeImages(episodeUrl, cookie);
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer)
+                            throws Exception {
+                        return IliltoonApi.downloadBytes(imageUrl, referer, cookie);
+                    }
+                });
+    }
+
+    private void downloadExternalSeries(String titleId, String sourceName, String title,
+                                        String description, String tags, String thumbnailUrl,
+                                        String pageUrl, List<ExternalEpisode> episodes,
+                                        ExternalSiteApi api) throws Exception {
+        checkCancelled();
+        LibraryDatabase db = LibraryDatabase.get(this);
+        SeriesItem existing = db.getSeries(titleId);
+        String storageUri = existing == null ? StorageSettings.getTreeUri(this) : existing.storageUri;
+        WebtoonStorage storage = new WebtoonStorage(this, storageUri);
+
+        update("미완성 회차 파일을 정리하는 중…", 0, 0);
+        cleanupDownloadCache(titleId);
+        storage.cleanupIncomplete(titleId);
+
+        String thumbnailPath = saveExternalThumbnail(
+                titleId, thumbnailUrl, pageUrl, storage, api);
+        checkCancelled();
+        if (thumbnailPath == null && existing != null) thumbnailPath = existing.thumbnailPath;
+        db.upsertSeries(new SeriesItem(titleId, title, description, tags,
+                thumbnailPath, storage.storageUri(), "downloading", 0));
+        if (episodes.isEmpty()) {
+            throw new IllegalStateException(sourceName + " 회차 목록을 찾지 못했습니다.");
+        }
+
+        int current = 0;
+        for (ExternalEpisode episode : episodes) {
+            checkCancelled();
+            current++;
+            if (db.hasCompleteEpisode(titleId, episode.number) &&
+                    storage.episodeZipExists(titleId, episode.number)) {
+                update(current + "/" + episodes.size() + "화 · 이미 보유",
+                        current, episodes.size());
+                continue;
+            }
+
+            String label = current + "/" + episodes.size() + "화 · " + episode.title;
+            update(label + " 분석 중", current - 1, episodes.size());
+            List<String> images = api.fetchImages(episode.url);
+            checkCancelled();
+            if (images.isEmpty()) {
+                throw new IllegalStateException(episode.number + "화 이미지를 찾지 못했습니다.");
+            }
+            File tempZip = newEpisodeTempZip(titleId, episode.number);
+            int saved = 0;
+            try {
+                try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(tempZip))) {
+                    for (int i = 0; i < images.size(); i++) {
+                        checkCancelled();
+                        String imageUrl = images.get(i);
+                        byte[] bytes = api.downloadBytes(imageUrl, episode.url);
+                        checkCancelled();
+                        String entryName = String.format(Locale.US, "%03d", i + 1) +
+                                imageExtension(imageUrl);
+                        zip.putNextEntry(new ZipEntry(entryName));
+                        zip.write(bytes);
+                        zip.closeEntry();
+                        saved++;
+                        if ((i + 1) % 5 == 0 || i + 1 == images.size()) {
+                            update(label + " · " + (i + 1) + "/" + images.size() + "장 압축",
+                                    current - 1, episodes.size());
+                        }
+                    }
+                }
+                checkCancelled();
+                if (saved == 0) {
+                    throw new IllegalStateException(episode.number + "화 저장 실패");
+                }
+                storage.writeEpisodeZip(titleId, episode.number, tempZip);
+            } finally {
+                tempZip.delete();
+            }
+            checkCancelled();
+            db.upsertEpisode(new EpisodeItem(
+                    titleId, episode.number, episode.title, saved, false));
+            update(label + " ZIP 저장 완료", current, episodes.size());
+        }
+
+        db.setSeriesStatus(titleId, "complete");
+        update("완료 · " + episodes.size() + "개 회차", episodes.size(), episodes.size());
+        broadcast(sourceName + " 다운로드 완료", true, false);
+    }
+
+    private File newEpisodeTempZip(String titleId, int episodeNumber) {
+        File tempDir = new File(getCacheDir(), "download-zips");
+        if (!tempDir.exists() && !tempDir.mkdirs()) {
+            throw new IllegalStateException("임시 폴더 생성 실패");
+        }
+        return new File(tempDir, titleId + "-" + episodeNumber + ".zip.part");
+    }
+
+    private String saveExternalThumbnail(String titleId, String thumbnailUrl, String pageUrl,
+                                         WebtoonStorage storage, ExternalSiteApi api) {
+        if (thumbnailUrl == null || thumbnailUrl.isEmpty()) return null;
+        try {
+            return storage.writeThumbnail(
+                    titleId, api.downloadBytes(thumbnailUrl, pageUrl));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private void checkCancelled() throws InterruptedException {
         if (cancelRequested.get() || Thread.currentThread().isInterrupted()) {
             throw new InterruptedException("다운로드 중단");
@@ -424,7 +607,7 @@ public final class SeriesDownloadService extends Service {
         serviceDestroying = true;
         cancelRequested.set(true);
         Thread thread = workerThread;
-        if (thread != null) thread.interrupt();
+        NetworkRetry.cancel(thread);
         RUNNING.set(false);
         currentTitleId = null;
         releaseWakeLock();
@@ -436,3 +619,9 @@ public final class SeriesDownloadService extends Service {
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
     }
 }
+
+
+
+
+
+

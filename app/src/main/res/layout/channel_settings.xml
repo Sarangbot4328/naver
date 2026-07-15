@@ -22,6 +22,10 @@
                     android:layout_height="48dp" android:text="네이버 웹툰" />
                 <RadioButton android:id="@+id/source_joatoon" android:layout_width="match_parent"
                     android:layout_height="48dp" android:text="조아툰" />
+                <RadioButton android:id="@+id/source_manhwabang" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="만화방" />
+                <RadioButton android:id="@+id/source_ililtoon" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="일일툰" />
             </RadioGroup>
             <LinearLayout android:id="@+id/joatoon_address_box" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
@@ -39,31 +43,39 @@
                     android:layout_height="48dp" android:layout_marginTop="8dp"
                     android:text="조아툰 주소 저장" android:textAllCaps="false" />
             </LinearLayout>
+            <LinearLayout android:id="@+id/manhwabang_address_box" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="만화방 주소" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp" android:text="주소가 변경되면 새 주소를 입력하고 저장하세요."
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <EditText android:id="@+id/manhwabang_url" android:layout_width="match_parent"
+                    android:layout_height="52dp" android:layout_marginTop="8dp"
+                    android:hint="https://manhwabang.net" android:inputType="textUri"
+                    android:maxLines="1" android:paddingHorizontal="12dp" />
+                <Button android:id="@+id/save_manhwabang_url" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:layout_marginTop="8dp"
+                    android:text="만화방 주소 저장" android:textAllCaps="false" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/ililtoon_address_box" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="일일툰 주소" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp" android:text="주소가 변경되면 새 주소를 입력하고 저장하세요."
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <EditText android:id="@+id/ililtoon_url" android:layout_width="match_parent"
+                    android:layout_height="52dp" android:layout_marginTop="8dp"
+                    android:hint="https://11toon148.com" android:inputType="textUri"
+                    android:maxLines="1" android:paddingHorizontal="12dp" />
+                <Button android:id="@+id/save_ililtoon_url" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:layout_marginTop="8dp"
+                    android:text="일일툰 주소 저장" android:textAllCaps="false" />
+            </LinearLayout>
         </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="22dp" android:background="@color/surface"
-            android:orientation="vertical" android:padding="18dp">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="웹툰 다운로드 폴더" android:textColor="@color/text_primary"
-                android:textSize="17sp" android:textStyle="bold" />
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="7dp" android:text="새로 다운로드하는 작품이 저장될 위치입니다. 기존 작품은 원래 위치를 계속 사용합니다."
-                android:textColor="@color/text_secondary" android:textSize="13sp" />
-            <TextView android:id="@+id/storage_path" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="16dp"
-                android:background="@color/background" android:padding="12dp"
-                android:textColor="@color/green_dark" android:textIsSelectable="true" android:textSize="13sp" />
-            <Button android:id="@+id/choose_folder" android:layout_width="match_parent"
-                android:layout_height="48dp" android:layout_marginTop="14dp"
-                android:text="다른 폴더 선택" android:textAllCaps="false" />
-            <Button android:id="@+id/reset_folder" android:layout_width="match_parent"
-                android:layout_height="48dp" android:layout_marginTop="6dp"
-                android:text="기본 저장소로 변경" android:textAllCaps="false" />
-        </LinearLayout>
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="회차는 작품 폴더 안에 001.zip, 002.zip 형식으로 저장됩니다. ZIP은 읽을 때만 앱 캐시에 임시로 풀리고 뷰어를 닫으면 임시 파일이 삭제됩니다."
-            android:textColor="@color/text_secondary" android:textSize="13sp" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
@@ -76,3 +88,5 @@
         </LinearLayout>
     </LinearLayout>
 </ScrollView>
+
+

@@ -4,14 +4,10 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.content.Intent;
-import android.net.Uri;
 import android.widget.Button;
 import android.widget.FrameLayout;
 
 import androidx.activity.OnBackPressedCallback;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -20,7 +16,6 @@ import com.webtoonmap.mobile.ui.DownloadChannelView;
 import com.webtoonmap.mobile.ui.NaverChannelView;
 import com.webtoonmap.mobile.ui.SettingsChannelView;
 import com.webtoonmap.mobile.ui.SystemBarInsets;
-import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.SourceSettings;
 
 public final class MainActivity extends AppCompatActivity {
@@ -32,20 +27,6 @@ public final class MainActivity extends AppCompatActivity {
     private DownloadChannelView downloadsView;
     private SettingsChannelView settingsView;
     private int selectedChannel = 0;
-    private final ActivityResultLauncher<Uri> folderPicker = registerForActivityResult(
-            new ActivityResultContracts.OpenDocumentTree(), uri -> {
-                if (uri == null) return;
-                try {
-                    getContentResolver().takePersistableUriPermission(uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    StorageSettings.setTreeUri(this, uri.toString());
-                    if (settingsView != null) settingsView.refresh();
-                } catch (SecurityException e) {
-                    android.widget.Toast.makeText(this, "폴더 접근 권한을 저장하지 못했습니다.",
-                            android.widget.Toast.LENGTH_LONG).show();
-                }
-            });
-
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_main);
@@ -54,7 +35,7 @@ public final class MainActivity extends AppCompatActivity {
         naverButton = findViewById(R.id.nav_naver);
         downloadsButton = findViewById(R.id.nav_downloads);
         settingsButton = findViewById(R.id.nav_settings);
-        naverButton.setText(SourceSettings.isJoatoon(this) ? "조아툰" : "네이버 웹툰");
+        naverButton.setText(SourceSettings.channelLabel(this));
         naverView = new NaverChannelView(this);
         downloadsView = new DownloadChannelView(this);
         settingsView = new SettingsChannelView(this);
@@ -102,15 +83,11 @@ public final class MainActivity extends AppCompatActivity {
         tintNavigation();
     }
 
-    public void openStorageFolderPicker() {
-        folderPicker.launch(null);
-    }
-
     public void applyChannelSettings() {
         boolean showing = selectedChannel == 0;
         if (naverView != null) naverView.destroyWebView();
         naverView = new NaverChannelView(this);
-        naverButton.setText(SourceSettings.isJoatoon(this) ? "조아툰" : "네이버 웹툰");
+        naverButton.setText(SourceSettings.channelLabel(this));
         if (showing) swap(naverView);
         tintNavigation();
     }
@@ -144,3 +121,5 @@ public final class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 }
+
+

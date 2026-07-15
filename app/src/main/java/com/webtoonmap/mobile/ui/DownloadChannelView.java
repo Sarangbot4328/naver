@@ -1,6 +1,8 @@
 package com.webtoonmap.mobile.ui;
 
+import android.app.Activity;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -18,16 +20,21 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.webtoonmap.mobile.R;
+import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
+import com.webtoonmap.mobile.download.SourceJobStore;
+import com.webtoonmap.mobile.export.SeriesExporter;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -40,8 +47,10 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     private final RecyclerView list;
     private final View empty;
     private final TextView status;
+    private final Button exportButton;
     private final SwipeRefreshLayout swipe;
     private boolean receiverRegistered;
+    private boolean exporting;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -56,10 +65,12 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         list = findViewById(R.id.series_list);
         empty = findViewById(R.id.empty);
         status = findViewById(R.id.download_status);
+        exportButton = findViewById(R.id.export);
         swipe = findViewById(R.id.swipe);
         list.setLayoutManager(new LinearLayoutManager(context));
         list.setAdapter(adapter);
         findViewById(R.id.refresh).setOnClickListener(v -> refresh());
+        exportButton.setOnClickListener(v -> chooseExport());
         swipe.setOnRefreshListener(this::refresh);
         refresh();
     }
@@ -71,9 +82,90 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             post(() -> {
                 adapter.setItems(rows);
                 empty.setVisibility(rows.isEmpty() ? VISIBLE : GONE);
+                exportButton.setEnabled(!rows.isEmpty() && !exporting);
                 swipe.setRefreshing(false);
             });
         });
+    }
+
+    private void chooseExport() {
+        if (exporting) return;
+        List<SeriesItem> rows = adapter.snapshot();
+        if (rows.isEmpty()) {
+            Toast.makeText(getContext(), "내보낼 작품이 없습니다.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        CharSequence[] labels = new CharSequence[rows.size()];
+        for (int i = 0; i < rows.size(); i++) {
+            SeriesItem item = rows.get(i);
+            labels[i] = item.title + "\n" + item.episodeCount + "개 회차";
+        }
+        new AlertDialog.Builder(getContext())
+                .setTitle("내보낼 웹툰 선택")
+                .setItems(labels, (dialog, which) -> exportSeries(rows.get(which)))
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void exportSeries(SeriesItem item) {
+        if (exporting) return;
+        if (SeriesDownloadService.isDownloading(item.titleId) ||
+                SeriesDownloadService.isQueued(getContext(), item.titleId)) {
+            Toast.makeText(getContext(), "다운로드가 끝난 뒤 내보내 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        exporting = true;
+        exportButton.setEnabled(false);
+        exportButton.setText("압축 중…");
+        status.setText("‘" + item.title + "’ 내보내기 준비 중…");
+        executor.execute(() -> {
+            try {
+                List<EpisodeItem> episodes =
+                        LibraryDatabase.get(getContext()).listEpisodes(item.titleId);
+                File file = SeriesExporter.export(getContext(), item, episodes,
+                        (current, total) -> post(() -> status.setText(
+                                "‘" + item.title + "’ 압축 중 · " + current + "/" + total + "회차")));
+                post(() -> {
+                    exporting = false;
+                    exportButton.setEnabled(true);
+                    exportButton.setText("내보내기");
+                    status.setText("내보내기 완료 · " + file.getName());
+                    shareExport(file);
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ?
+                        "내보내기에 실패했습니다." : error.getMessage();
+                post(() -> {
+                    exporting = false;
+                    exportButton.setEnabled(adapter.getItemCount() > 0);
+                    exportButton.setText("내보내기");
+                    status.setText("내보내기 실패");
+                    Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void shareExport(File file) {
+        try {
+            Uri uri = FileProvider.getUriForFile(getContext(),
+                    getContext().getPackageName() + ".fileprovider", file);
+            Intent share = new Intent(Intent.ACTION_SEND)
+                    .setType("application/zip")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .putExtra(Intent.EXTRA_SUBJECT, file.getName())
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            share.setClipData(ClipData.newRawUri(file.getName(), uri));
+            Intent chooser = Intent.createChooser(share, "웹툰 내보내기");
+            if (!(getContext() instanceof Activity)) {
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
+            getContext().startActivity(chooser);
+        } catch (Exception error) {
+            Toast.makeText(getContext(), "공유 화면을 열지 못했습니다.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override protected void onAttachedToWindow() {
@@ -97,6 +189,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     private final class SeriesAdapter extends RecyclerView.Adapter<SeriesAdapter.Holder> {
         private final List<SeriesItem> items = new ArrayList<>();
         void setItems(List<SeriesItem> rows) { items.clear(); items.addAll(rows); notifyDataSetChanged(); }
+        List<SeriesItem> snapshot() { return new ArrayList<>(items); }
 
         @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             return new Holder(LayoutInflater.from(parent.getContext()).inflate(R.layout.row_series, parent, false));
@@ -169,7 +262,10 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                         } catch (Exception ignored) {
                             deleted = false;
                         }
-                        if (deleted) LibraryDatabase.get(getContext()).deleteSeries(item.titleId);
+                        if (deleted) {
+                            LibraryDatabase.get(getContext()).deleteSeries(item.titleId);
+                            SourceJobStore.remove(getContext(), item.titleId);
+                        }
                         final boolean result = deleted;
                         post(() -> {
                             Toast.makeText(getContext(), result ? "작품을 완전히 삭제했습니다." :
@@ -205,3 +301,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         }
     }
 }
+
+
+
+

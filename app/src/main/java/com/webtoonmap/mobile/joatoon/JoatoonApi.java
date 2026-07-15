@@ -2,6 +2,8 @@ package com.webtoonmap.mobile.joatoon;
 
 import android.text.Html;
 
+import com.webtoonmap.mobile.network.NetworkRetry;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -134,58 +136,66 @@ public final class JoatoonApi {
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie) throws Exception {
-        HttpURLConnection conn = open(url, referer, cookie, "image/*,*/*;q=0.8");
-        try {
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) throw new IOException("조아툰 이미지 HTTP " + code);
-            try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                byte[] buffer = new byte[32 * 1024];
-                int count;
-                while ((count = in.read(buffer)) >= 0) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        throw new InterruptedIOException("조아툰 이미지 다운로드 중단");
+        return NetworkRetry.forever(() -> {
+            HttpURLConnection conn = open(url, referer, cookie, "image/*,*/*;q=0.8");
+            try {
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) throw new IOException("조아툰 이미지 HTTP " + code);
+                try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[32 * 1024];
+                    int count;
+                    while ((count = in.read(buffer)) >= 0) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedIOException("조아툰 이미지 다운로드 중단");
+                        }
+                        out.write(buffer, 0, count);
                     }
-                    out.write(buffer, 0, count);
+                    return out.toByteArray();
                 }
-                return out.toByteArray();
+            } finally {
+                NetworkRetry.release(conn);
+                conn.disconnect();
             }
-        } finally {
-            conn.disconnect();
-        }
+        
+        });
     }
 
     private static String getText(String url, String referer, String cookie) throws Exception {
-        HttpURLConnection conn = open(url, referer, cookie, "text/html,application/xhtml+xml,*/*;q=0.8");
-        try {
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) throw new IOException("조아툰 응답 오류 " + code);
-            try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                byte[] buffer = new byte[32 * 1024];
-                int count;
-                while ((count = in.read(buffer)) >= 0) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        throw new InterruptedIOException("조아툰 요청 중단");
+        return NetworkRetry.forever(() -> {
+            HttpURLConnection conn = open(url, referer, cookie, "text/html,application/xhtml+xml,*/*;q=0.8");
+            try {
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) throw new IOException("조아툰 응답 오류 " + code);
+                try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[32 * 1024];
+                    int count;
+                    while ((count = in.read(buffer)) >= 0) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedIOException("조아툰 요청 중단");
+                        }
+                        out.write(buffer, 0, count);
                     }
-                    out.write(buffer, 0, count);
+                    return out.toString(StandardCharsets.UTF_8.name());
                 }
-                return out.toString(StandardCharsets.UTF_8.name());
+            } finally {
+                NetworkRetry.release(conn);
+                conn.disconnect();
             }
-        } finally {
-            conn.disconnect();
-        }
+        
+        });
     }
 
     private static HttpURLConnection open(String url, String referer, String cookie, String accept)
             throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(20_000);
-        conn.setReadTimeout(45_000);
+        conn.setConnectTimeout(0);
+        conn.setReadTimeout(0);
         conn.setInstanceFollowRedirects(true);
         conn.setRequestProperty("User-Agent", USER_AGENT);
         conn.setRequestProperty("Accept", accept);
         if (referer != null) conn.setRequestProperty("Referer", referer);
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
-        return conn;
+        return NetworkRetry.track(conn);
     }
 
     private static String findMeta(String html, String key) {
@@ -240,3 +250,7 @@ public final class JoatoonApi {
         return baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
     }
 }
+
+
+
+

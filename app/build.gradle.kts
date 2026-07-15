@@ -10,7 +10,7 @@ android {
         applicationId = "com.webtoonmap.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
+        versionCode = 10
         versionName = "1.1"
     }
 
@@ -35,3 +35,9 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
 }
+
+
+
+
+
+

@@ -7,10 +7,16 @@ import android.net.Uri;
 public final class SourceSettings {
     public static final String SOURCE_NAVER = "naver";
     public static final String SOURCE_JOATOON = "joatoon";
+    public static final String SOURCE_MANHWABANG = "manhwabang";
+    public static final String SOURCE_ILILTOON = "ililtoon";
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
+    public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
+    public static final String DEFAULT_ILILTOON_URL = "https://11toon148.com";
     private static final String PREFS = "source_settings";
     private static final String KEY_SOURCE = "source";
     private static final String KEY_JOATOON_URL = "joatoon_url";
+    private static final String KEY_MANHWABANG_URL = "manhwabang_url";
+    private static final String KEY_ILILTOON_URL = "ililtoon_url";
 
     private SourceSettings() { }
 
@@ -24,7 +30,7 @@ public final class SourceSettings {
     }
 
     public static void setSource(Context context, String source) {
-        String value = SOURCE_JOATOON.equals(source) ? SOURCE_JOATOON : SOURCE_NAVER;
+        String value = isKnownSource(source) ? source : SOURCE_NAVER;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_SOURCE, value).apply();
     }
@@ -37,11 +43,59 @@ public final class SourceSettings {
     }
 
     public static boolean setJoatoonUrl(Context context, String raw) {
+        return setUrl(context, KEY_JOATOON_URL, raw);
+    }
+
+    public static String getManhwabangUrl(Context context) {
+        return getUrl(context, KEY_MANHWABANG_URL, DEFAULT_MANHWABANG_URL);
+    }
+
+    public static boolean setManhwabangUrl(Context context, String raw) {
+        return setUrl(context, KEY_MANHWABANG_URL, raw);
+    }
+
+    public static String getIliltoonUrl(Context context) {
+        return getUrl(context, KEY_ILILTOON_URL, DEFAULT_ILILTOON_URL);
+    }
+
+    public static boolean setIliltoonUrl(Context context, String raw) {
+        return setUrl(context, KEY_ILILTOON_URL, raw);
+    }
+
+    public static String channelLabel(Context context) {
+        String source = getSource(context);
+        if (SOURCE_JOATOON.equals(source)) return "조아툰";
+        if (SOURCE_MANHWABANG.equals(source)) return "만화방";
+        if (SOURCE_ILILTOON.equals(source)) return "일일툰";
+        return "네이버 웹툰";
+    }
+
+    public static String homeUrl(Context context) {
+        String source = getSource(context);
+        if (SOURCE_JOATOON.equals(source)) return getJoatoonUrl(context);
+        if (SOURCE_MANHWABANG.equals(source)) return getManhwabangUrl(context) + "/webtoon/list?type=def";
+        if (SOURCE_ILILTOON.equals(source)) return getIliltoonUrl(context);
+        return "https://comic.naver.com/webtoon";
+    }
+
+    private static boolean setUrl(Context context, String key, String raw) {
         String normalized = normalizeUrl(raw);
         if (normalized == null) return false;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(KEY_JOATOON_URL, normalized).apply();
+                .putString(key, normalized).apply();
         return true;
+    }
+
+    private static String getUrl(Context context, String key, String fallback) {
+        String stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(key, fallback);
+        String normalized = normalizeUrl(stored);
+        return normalized == null ? fallback : normalized;
+    }
+
+    private static boolean isKnownSource(String source) {
+        return SOURCE_NAVER.equals(source) || SOURCE_JOATOON.equals(source) ||
+                SOURCE_MANHWABANG.equals(source) || SOURCE_ILILTOON.equals(source);
     }
 
     public static String normalizeUrl(String raw) {
