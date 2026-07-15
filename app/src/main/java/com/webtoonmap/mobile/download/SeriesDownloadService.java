@@ -24,6 +24,7 @@ import com.webtoonmap.mobile.manhwabang.ManhwabangApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.naver.NaverApi;
 import com.webtoonmap.mobile.network.NetworkRetry;
+import com.webtoonmap.mobile.network.OptionalImageDownloader;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
@@ -373,7 +374,7 @@ public final class SeriesDownloadService extends Service {
             episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
         }
         downloadExternalSeries(titleId, "만화방", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, episodes, new ExternalSiteApi() {
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
                     @Override public List<String> fetchImages(String episodeUrl) throws Exception {
                         return ManhwabangApi.fetchEpisodeImages(episodeUrl, cookie);
                     }
@@ -401,7 +402,7 @@ public final class SeriesDownloadService extends Service {
             episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
         }
         downloadExternalSeries(titleId, "일일툰", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, episodes, new ExternalSiteApi() {
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
                     @Override public List<String> fetchImages(String episodeUrl) throws Exception {
                         return IliltoonApi.fetchEpisodeImages(episodeUrl, cookie);
                     }
@@ -415,7 +416,8 @@ public final class SeriesDownloadService extends Service {
 
     private void downloadExternalSeries(String titleId, String sourceName, String title,
                                         String description, String tags, String thumbnailUrl,
-                                        String pageUrl, List<ExternalEpisode> episodes,
+                                        String pageUrl, String cookie,
+                                        List<ExternalEpisode> episodes,
                                         ExternalSiteApi api) throws Exception {
         checkCancelled();
         LibraryDatabase db = LibraryDatabase.get(this);
@@ -428,7 +430,7 @@ public final class SeriesDownloadService extends Service {
         storage.cleanupIncomplete(titleId);
 
         String thumbnailPath = saveExternalThumbnail(
-                titleId, thumbnailUrl, pageUrl, storage, api);
+                titleId, thumbnailUrl, pageUrl, cookie, storage);
         checkCancelled();
         if (thumbnailPath == null && existing != null) thumbnailPath = existing.thumbnailPath;
         db.upsertSeries(new SeriesItem(titleId, title, description, tags,
@@ -504,11 +506,11 @@ public final class SeriesDownloadService extends Service {
     }
 
     private String saveExternalThumbnail(String titleId, String thumbnailUrl, String pageUrl,
-                                         WebtoonStorage storage, ExternalSiteApi api) {
+                                         String cookie, WebtoonStorage storage) {
         if (thumbnailUrl == null || thumbnailUrl.isEmpty()) return null;
         try {
-            return storage.writeThumbnail(
-                    titleId, api.downloadBytes(thumbnailUrl, pageUrl));
+            return storage.writeThumbnail(titleId,
+                    OptionalImageDownloader.download(thumbnailUrl, pageUrl, cookie));
         } catch (Exception ignored) {
             return null;
         }
@@ -533,7 +535,7 @@ public final class SeriesDownloadService extends Service {
     private String saveThumbnail(NaverApi.SeriesInfo info, WebtoonStorage storage, String cookie) {
         if (info.thumbnailUrl == null || info.thumbnailUrl.isEmpty()) return null;
         try {
-            byte[] bytes = NaverApi.downloadBytes(info.thumbnailUrl,
+            byte[] bytes = OptionalImageDownloader.download(info.thumbnailUrl,
                     NaverApi.listUrl(info.titleId, info.segment), cookie);
             return storage.writeThumbnail(info.titleId, bytes);
         } catch (Exception ignored) {
@@ -545,7 +547,8 @@ public final class SeriesDownloadService extends Service {
                                         WebtoonStorage storage, String cookie) {
         if (info.thumbnailUrl == null || info.thumbnailUrl.isEmpty()) return null;
         try {
-            byte[] bytes = JoatoonApi.downloadBytes(info.thumbnailUrl, info.pageUrl, cookie);
+            byte[] bytes = OptionalImageDownloader.download(
+                    info.thumbnailUrl, info.pageUrl, cookie);
             return storage.writeThumbnail(titleId, bytes);
         } catch (Exception ignored) {
             return null;
@@ -619,6 +622,8 @@ public final class SeriesDownloadService extends Service {
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
     }
 }
+
+
 
 
 

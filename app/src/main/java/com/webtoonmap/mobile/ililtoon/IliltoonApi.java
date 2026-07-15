@@ -73,12 +73,13 @@ public final class IliltoonApi {
                 .replaceFirst("(?i)\\s*-\\s*일일툰.*$", "").trim();
         if (title.isEmpty()) title = "일일툰 만화";
         String description = stripHtml(findMeta(html, "og:description"));
-        String thumbnail = absoluteUrl(pageUrl, findMeta(html, "og:image"));
+
+        // The site metadata image is sometimes extension-less and returns HTTP 522.
+        // Follow the desktop extension and use the first episode banner first.
+        String thumbnail = findElementImage(html, pageUrl,
+                "episode-banner|comic-thumb|banner");
         if (thumbnail == null) {
-            Matcher background = Pattern.compile(
-                    "(?is)background(?:-image)?\\s*:\\s*url\\([\\\"']?([^\\\"')]+)")
-                    .matcher(html);
-            if (background.find()) thumbnail = absoluteUrl(pageUrl, background.group(1));
+            thumbnail = absoluteUrl(pageUrl, findMeta(html, "og:image"));
         }
 
         LinkedHashSet<String> tags = new LinkedHashSet<>();
@@ -229,6 +230,48 @@ public final class IliltoonApi {
     private static String tagText(String html, String tag) {
         Matcher matcher = Pattern.compile("(?is)<" + tag + "\\b[^>]*>(.*?)</" + tag + ">").matcher(html);
         return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static String findElementImage(String html, String pageUrl, String classNames) {
+        String markup = html.replaceAll("(?is)<script\\b[^>]*>.*?</script>", "");
+        String[] allowed = classNames.split("\\|");
+        Matcher element = Pattern.compile(
+                "(?is)<(?:div|p|img)\\b[^>]*>")
+                .matcher(markup);
+        while (element.find()) {
+            String tag = element.group();
+            Matcher classAttribute = Pattern.compile(
+                    "(?is)\\bclass\\s*=\\s*[\\\"']([^\\\"']*)[\\\"']")
+                    .matcher(tag);
+            if (!classAttribute.find()) continue;
+            boolean matches = false;
+            for (String token : classAttribute.group(1).trim().split("\\s+")) {
+                for (String wanted : allowed) {
+                    if (token.equalsIgnoreCase(wanted) &&
+                            (!wanted.equalsIgnoreCase("banner") || tag.matches("(?is)<img\\b.*"))) {
+                        matches = true;
+                        break;
+                    }
+                }
+                if (matches) break;
+            }
+            if (!matches) continue;
+            Matcher background = Pattern.compile(
+                    "(?is)background(?:-image)?\\s*:\\s*url\\(\\s*[\\\"']?([^\\\"')\\s]+)")
+                    .matcher(tag);
+            if (background.find()) {
+                String url = absoluteUrl(pageUrl, background.group(1));
+                if (url != null) return url;
+            }
+            Matcher source = Pattern.compile(
+                    "(?is)(?:src|data-src)\\s*=\\s*[\\\"']([^\\\"']+)[\\\"']")
+                    .matcher(tag);
+            if (source.find()) {
+                String url = absoluteUrl(pageUrl, source.group(1));
+                if (url != null) return url;
+            }
+        }
+        return null;
     }
 
     private static String stripHtml(String value) {

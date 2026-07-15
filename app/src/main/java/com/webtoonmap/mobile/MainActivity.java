@@ -1,6 +1,7 @@
 package com.webtoonmap.mobile;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,6 +13,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.webtoonmap.mobile.activation.ActivationActivity;
+import com.webtoonmap.mobile.activation.ActivationStore;
 import com.webtoonmap.mobile.ui.DownloadChannelView;
 import com.webtoonmap.mobile.ui.NaverChannelView;
 import com.webtoonmap.mobile.ui.SettingsChannelView;
@@ -29,6 +32,11 @@ public final class MainActivity extends AppCompatActivity {
     private int selectedChannel = 0;
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (!ActivationStore.isActivated(this)) {
+            startActivity(new Intent(this, ActivationActivity.class));
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_main);
         SystemBarInsets.apply(this, findViewById(R.id.main_root), true);
         content = findViewById(R.id.content);
@@ -117,7 +125,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     @Override protected void onDestroy() {
-        naverView.destroyWebView();
+        if (naverView != null) naverView.destroyWebView();
         super.onDestroy();
     }
 }

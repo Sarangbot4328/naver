@@ -48,6 +48,11 @@ public final class NaverChannelView extends FrameLayout {
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (intent.getBooleanExtra(SeriesDownloadService.EXTRA_DONE, false)) stopping = false;
+            if (intent.getBooleanExtra(SeriesDownloadService.EXTRA_ERROR, false)) {
+                String message = intent.getStringExtra(SeriesDownloadService.EXTRA_MESSAGE);
+                Toast.makeText(activity, message == null ? "다운로드에 실패했습니다." : message,
+                        Toast.LENGTH_LONG).show();
+            }
             updateActionButtons();
         }
     };
@@ -168,8 +173,8 @@ public final class NaverChannelView extends FrameLayout {
             downloadButton.setText("다운로드 중");
             downloadButton.setEnabled(false);
         } else if (SeriesDownloadService.isQueued(activity, titleId)) {
-            downloadButton.setText("대기열 등록됨");
-            downloadButton.setEnabled(false);
+            downloadButton.setText(running ? "대기열 등록됨" : "다운로드 재개");
+            downloadButton.setEnabled(!running);
         } else {
             downloadButton.setText(running ? "대기열 추가" : "전체 다운로드");
             downloadButton.setEnabled(true);
@@ -186,13 +191,14 @@ public final class NaverChannelView extends FrameLayout {
             Toast.makeText(activity, "이 작품을 다운로드하고 있습니다.", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (SeriesDownloadService.isQueued(activity, titleId)) {
+        boolean queued = SeriesDownloadService.isQueued(activity, titleId);
+        if (queued && SeriesDownloadService.isRunning()) {
             Toast.makeText(activity, "이미 대기열에 등록된 작품입니다.", Toast.LENGTH_SHORT).show();
             return;
         }
         boolean queueMode = SeriesDownloadService.isRunning();
         new AlertDialog.Builder(activity)
-                .setTitle(queueMode ? "대기열 추가" : "전체 다운로드")
+                .setTitle(queueMode ? "대기열 추가" : (queued ? "다운로드 재개" : "전체 다운로드"))
                 .setMessage(queueMode ?
                         "현재 작품을 다운로드 대기열에 추가합니다. 앞 작품의 다운로드가 끝나면 자동으로 시작합니다." :
                         (!SourceSettings.SOURCE_NAVER.equals(source) ?
@@ -201,10 +207,11 @@ public final class NaverChannelView extends FrameLayout {
                 .setNegativeButton("취소", null)
                 .setPositiveButton(queueMode ? "대기열" : "시작", (dialog, which) -> {
                     registerSourceJob(titleId, webView.getUrl());
-                    boolean added = SeriesDownloadService.enqueue(activity, titleId);
+                    SeriesDownloadService.enqueue(activity, titleId);
                     Toast.makeText(activity, queueMode ? "대기열에 추가했습니다." :
-                            "다운로드를 시작했습니다.", Toast.LENGTH_SHORT).show();
-                    if (added) updateActionButtons();
+                            (queued ? "다운로드를 다시 시작했습니다." : "다운로드를 시작했습니다."),
+                            Toast.LENGTH_SHORT).show();
+                    updateActionButtons();
                 }).show();
     }
 
@@ -314,3 +321,9 @@ public final class NaverChannelView extends FrameLayout {
     public void destroyWebView() { webView.stopLoading(); webView.destroy(); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 }
+
+
+
+
+
+

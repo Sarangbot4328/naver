@@ -224,7 +224,8 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                 Toast.makeText(getContext(), "이 작품을 이미 다운로드하고 있습니다.", Toast.LENGTH_SHORT).show();
                 return;
             }
-            if (SeriesDownloadService.isQueued(getContext(), item.titleId)) {
+            boolean queued = SeriesDownloadService.isQueued(getContext(), item.titleId);
+            if (queued && SeriesDownloadService.isRunning()) {
                 Toast.makeText(getContext(), "이미 다운로드 대기열에 있습니다.", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -232,7 +233,9 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             status.setText("‘" + item.title + "’ " + (queueMode ? "대기열 추가 중…" : "이어받기 준비 중…"));
             SeriesDownloadService.enqueue(getContext(), item.titleId);
             Toast.makeText(getContext(), queueMode ? "이어받기를 대기열에 추가했습니다." :
-                    "완성되지 않은 회차부터 이어받습니다.", Toast.LENGTH_SHORT).show();
+                    (queued ? "중단된 대기열을 다시 시작했습니다." :
+                            "완성되지 않은 회차부터 이어받습니다."),
+                    Toast.LENGTH_SHORT).show();
         }
 
         private Bitmap decodeThumbnail(String path) {
@@ -301,6 +304,8 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         }
     }
 }
+
+
 
 
 
