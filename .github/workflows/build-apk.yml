@@ -13,7 +13,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -27,11 +26,38 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Keep the same debug signing key
+      - name: Prepare signing key directory
+        run: mkdir -p /home/runner/.android
+
+      - name: Restore the same debug signing key
+        id: signing-key-cache
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
+          path: /home/runner/.android/debug.keystore
           key: webtoon-map-debug-keystore-v1
+
+      - name: Create a signing key only when none was restored
+        run: |
+          if [ ! -f /home/runner/.android/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore /home/runner/.android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Show signing key cache result
+        run: |
+          echo "Signing key cache hit: ${{ steps.signing-key-cache.outputs.cache-hit }}"
+          keytool -list -v \
+            -keystore /home/runner/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey |
+          grep -E "SHA1:|SHA256:"
 
       - name: Install Android platform
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
@@ -55,10 +81,3 @@ jobs:
           path: app/build/outputs/apk/debug/webtoon-map.apk
           if-no-files-found: error
 
-      - name: Back up debug signing key
-        uses: actions/upload-artifact@v4
-        with:
-          name: webtoon-map-debug-signing-key
-          path: ~/.android/debug.keystore
-          include-hidden-files: true
-          if-no-files-found: warn
