@@ -16,6 +16,8 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/webtoon-map-signing.p12
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -25,6 +27,18 @@ jobs:
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_ADMIN_CHAT_ID" ]; then
             echo "::error::TELEGRAM_BOT_TOKEN and TELEGRAM_ADMIN_CHAT_ID repository secrets are required."
+            exit 1
+          fi
+          if [[ ! "$TELEGRAM_BOT_TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]; then
+            echo "::error::TELEGRAM_BOT_TOKEN is incomplete or has an invalid format."
+            exit 1
+          fi
+          if [[ ! "$TELEGRAM_ADMIN_CHAT_ID" =~ ^-?[0-9]+$ ]]; then
+            echo "::error::TELEGRAM_ADMIN_CHAT_ID must contain only the numeric chat ID."
+            exit 1
+          fi
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 repository secret is required for stable APK updates."
             exit 1
           fi
 
@@ -37,35 +51,17 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Prepare signing key directory
-        run: mkdir -p /home/runner/.android
-
-      - name: Restore the same debug signing key
-        id: signing-key-cache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.android/debug.keystore
-          key: webtoon-map-debug-keystore-v1
-
-      - name: Create a signing key only when none was restored
+      - name: Restore the permanent signing key from GitHub Secret
+        shell: bash
         run: |
-          if [ ! -f /home/runner/.android/debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore /home/runner/.android/debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          if [ ! -s "$ANDROID_KEYSTORE_PATH" ]; then
+            echo "::error::Decoded signing key is empty."
+            exit 1
           fi
-
-      - name: Show signing key cache result
-        run: |
-          echo "Signing key cache hit: ${{ steps.signing-key-cache.outputs.cache-hit }}"
           keytool -list -v \
-            -keystore /home/runner/.android/debug.keystore \
+            -storetype PKCS12 \
+            -keystore "$ANDROID_KEYSTORE_PATH" \
             -storepass android \
             -alias androiddebugkey |
           grep -E "SHA1:|SHA256:"
@@ -81,6 +77,11 @@ jobs:
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
+
+      - name: Verify APK signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/debug/app-debug.apk
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/webtoon-map.apk
