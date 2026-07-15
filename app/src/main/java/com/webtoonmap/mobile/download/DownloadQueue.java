@@ -65,11 +65,15 @@ final class DownloadQueue {
         LinkedHashSet<String> result = new LinkedHashSet<>();
         if (!order.isEmpty()) {
             for (String value : order.split(",")) {
-                if (value.matches("\\d+") && (stored == null || stored.contains(value))) result.add(value);
+                if (isValidKey(value) && (stored == null || stored.contains(value))) result.add(value);
             }
         }
-        if (stored != null) for (String value : stored) if (value.matches("\\d+")) result.add(value);
+        if (stored != null) for (String value : stored) if (isValidKey(value)) result.add(value);
         return new ArrayList<>(result);
+    }
+
+    private static boolean isValidKey(String value) {
+        return value != null && value.matches("(?:\\d+|joatoon_\\d+)");
     }
 
     private static void write(Context context, List<String> items) {

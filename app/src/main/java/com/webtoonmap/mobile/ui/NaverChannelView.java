@@ -26,10 +26,18 @@ import androidx.core.content.ContextCompat;
 import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
+import com.webtoonmap.mobile.joatoon.JoatoonApi;
+import com.webtoonmap.mobile.storage.SourceSettings;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class NaverChannelView extends FrameLayout {
-    private static final String HOME = "https://comic.naver.com/webtoon";
+    private static final String NAVER_HOME = "https://comic.naver.com/webtoon";
     private final MainActivity activity;
+    private final boolean joatoon;
+    private final String homeUrl;
+    private final String allowedHost;
     private final WebView webView;
     private final ProgressBar progress;
     private final Button downloadButton;
@@ -47,6 +55,9 @@ public final class NaverChannelView extends FrameLayout {
     public NaverChannelView(MainActivity activity) {
         super(activity);
         this.activity = activity;
+        joatoon = SourceSettings.isJoatoon(activity);
+        homeUrl = joatoon ? SourceSettings.getJoatoonUrl(activity) : NAVER_HOME;
+        allowedHost = Uri.parse(homeUrl).getHost();
         setBackgroundColor(Color.WHITE);
 
         webView = new WebView(activity);
@@ -89,7 +100,7 @@ public final class NaverChannelView extends FrameLayout {
         configureWebView();
         downloadButton.setOnClickListener(v -> confirmDownload());
         stopButton.setOnClickListener(v -> stopAllDownloads());
-        webView.loadUrl(HOME);
+        webView.loadUrl(homeUrl);
     }
 
     private void configureWebView() {
@@ -100,6 +111,7 @@ public final class NaverChannelView extends FrameLayout {
         settings.setLoadsImagesAutomatically(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setBuiltInZoomControls(false);
+        if (joatoon) settings.setUserAgentString(JoatoonApi.USER_AGENT);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
@@ -112,8 +124,15 @@ public final class NaverChannelView extends FrameLayout {
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if (uri.getHost() != null && (uri.getHost().equals("comic.naver.com") ||
-                        uri.getHost().endsWith(".naver.com"))) return false;
+                String host = uri.getHost();
+                if (host == null) return true;
+                if (!joatoon && (host.equals("comic.naver.com") || host.endsWith(".naver.com"))) {
+                    return false;
+                }
+                if (joatoon && allowedHost != null &&
+                        (host.equalsIgnoreCase(allowedHost) || host.endsWith("." + allowedHost))) {
+                    return false;
+                }
                 return true;
             }
 
@@ -134,7 +153,7 @@ public final class NaverChannelView extends FrameLayout {
     }
 
     private void updateActionButtons() {
-        String titleId = titleIdFrom(webView.getUrl());
+        String titleId = seriesKeyFrom(webView.getUrl());
         boolean running = SeriesDownloadService.isRunning();
         if (!running) stopping = false;
         stopButton.setVisibility(running ? View.VISIBLE : View.GONE);
@@ -155,7 +174,7 @@ public final class NaverChannelView extends FrameLayout {
     }
 
     private void confirmDownload() {
-        String titleId = titleIdFrom(webView.getUrl());
+        String titleId = seriesKeyFrom(webView.getUrl());
         if (titleId == null) {
             Toast.makeText(activity, "먼저 작품 페이지를 열어 주세요.", Toast.LENGTH_SHORT).show();
             return;
@@ -173,7 +192,8 @@ public final class NaverChannelView extends FrameLayout {
                 .setTitle(queueMode ? "대기열 추가" : "전체 다운로드")
                 .setMessage(queueMode ?
                         "현재 작품을 다운로드 대기열에 추가합니다. 앞 작품의 다운로드가 끝나면 자동으로 시작합니다." :
-                        "현재 이용 가능한 공개 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다.")
+                        (joatoon ? "현재 작품의 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다." :
+                                "현재 이용 가능한 공개 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다."))
                 .setNegativeButton("취소", null)
                 .setPositiveButton(queueMode ? "대기열" : "시작", (dialog, which) -> {
                     boolean added = SeriesDownloadService.enqueue(activity, titleId);
@@ -192,8 +212,17 @@ public final class NaverChannelView extends FrameLayout {
         Toast.makeText(activity, "현재 다운로드와 대기열 전체를 중단합니다.", Toast.LENGTH_SHORT).show();
     }
 
-    private String titleIdFrom(String url) {
+    private String seriesKeyFrom(String url) {
         if (url == null) return null;
+        if (joatoon) {
+            try {
+                Matcher matcher = Pattern.compile("/toon/w/(\\d+)(?:/|$)", Pattern.CASE_INSENSITIVE)
+                        .matcher(Uri.parse(url).getPath());
+                return matcher.find() ? JoatoonApi.seriesKey(matcher.group(1)) : null;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
         try {
             String value = Uri.parse(url).getQueryParameter("titleId");
             return value != null && value.matches("\\d+") ? value : null;
@@ -207,7 +236,7 @@ public final class NaverChannelView extends FrameLayout {
     public void goHome() {
         clearHistoryOnNextPage = true;
         webView.stopLoading();
-        webView.loadUrl(HOME);
+        webView.loadUrl(homeUrl);
     }
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();

@@ -19,7 +19,9 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
+import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.naver.NaverApi;
+import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
@@ -167,6 +169,14 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void downloadOne(String titleId) throws Exception {
+        if (JoatoonApi.isSeriesKey(titleId)) {
+            downloadJoatoon(titleId);
+        } else {
+            downloadNaver(titleId);
+        }
+    }
+
+    private void downloadNaver(String titleId) throws Exception {
         LibraryDatabase db = LibraryDatabase.get(this);
         checkCancelled();
         String cookie = CookieManager.getInstance().getCookie(NaverApi.ORIGIN);
@@ -243,6 +253,84 @@ public final class SeriesDownloadService extends Service {
         broadcast("다운로드 완료", true, false);
     }
 
+    private void downloadJoatoon(String titleId) throws Exception {
+        LibraryDatabase db = LibraryDatabase.get(this);
+        String seriesId = JoatoonApi.remoteId(titleId);
+        if (seriesId == null) throw new IllegalArgumentException("잘못된 조아툰 작품 번호입니다.");
+        String baseUrl = SourceSettings.getJoatoonUrl(this);
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("조아툰 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        JoatoonApi.SeriesInfo info = JoatoonApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
+        checkCancelled();
+
+        SeriesItem existing = db.getSeries(titleId);
+        String storageUri = existing == null ? StorageSettings.getTreeUri(this) : existing.storageUri;
+        WebtoonStorage storage = new WebtoonStorage(this, storageUri);
+        update("미완성 회차 파일을 정리하는 중…", 0, 0);
+        cleanupDownloadCache(titleId);
+        storage.cleanupIncomplete(titleId);
+
+        String thumbnailPath = saveJoatoonThumbnail(titleId, info, storage, cookie);
+        checkCancelled();
+        if (thumbnailPath == null && existing != null) thumbnailPath = existing.thumbnailPath;
+        db.upsertSeries(new SeriesItem(titleId, info.title, info.description, info.tags,
+                thumbnailPath, storage.storageUri(), "downloading", 0));
+        if (info.episodes.isEmpty()) throw new IllegalStateException("조아툰 회차 목록을 찾지 못했습니다.");
+
+        int current = 0;
+        for (JoatoonApi.EpisodeMeta episode : info.episodes) {
+            checkCancelled();
+            current++;
+            if (db.hasCompleteEpisode(titleId, episode.number) &&
+                    storage.episodeZipExists(titleId, episode.number)) {
+                update(current + "/" + info.episodes.size() + "화 · 이미 보유", current, info.episodes.size());
+                continue;
+            }
+
+            String label = current + "/" + info.episodes.size() + "화 · " + episode.title;
+            update(label + " 분석 중", current - 1, info.episodes.size());
+            List<String> images = JoatoonApi.fetchEpisodeImages(episode.url, cookie);
+            checkCancelled();
+            int saved = 0;
+            File tempDir = new File(getCacheDir(), "download-zips");
+            if (!tempDir.exists() && !tempDir.mkdirs()) {
+                throw new IllegalStateException("임시 폴더 생성 실패");
+            }
+            File tempZip = new File(tempDir, titleId + "-" + episode.number + ".zip.part");
+            try {
+                try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(tempZip))) {
+                    for (int i = 0; i < images.size(); i++) {
+                        checkCancelled();
+                        String imageUrl = images.get(i);
+                        byte[] bytes = JoatoonApi.downloadBytes(imageUrl, episode.url, cookie);
+                        checkCancelled();
+                        String entryName = String.format(Locale.US, "%03d", i + 1) + imageExtension(imageUrl);
+                        zip.putNextEntry(new ZipEntry(entryName));
+                        zip.write(bytes);
+                        zip.closeEntry();
+                        saved++;
+                        if ((i + 1) % 5 == 0 || i + 1 == images.size()) {
+                            update(label + " · " + (i + 1) + "/" + images.size() + "장 압축",
+                                    current - 1, info.episodes.size());
+                        }
+                    }
+                }
+                checkCancelled();
+                if (saved == 0) throw new IllegalStateException(episode.number + "화 저장 실패");
+                storage.writeEpisodeZip(titleId, episode.number, tempZip);
+            } finally {
+                tempZip.delete();
+            }
+            checkCancelled();
+            db.upsertEpisode(new EpisodeItem(titleId, episode.number, episode.title, saved, false));
+            update(label + " ZIP 저장 완료", current, info.episodes.size());
+        }
+        db.setSeriesStatus(titleId, "complete");
+        update("완료 · " + info.episodes.size() + "개 회차", info.episodes.size(), info.episodes.size());
+        broadcast("조아툰 다운로드 완료", true, false);
+    }
+
     private void checkCancelled() throws InterruptedException {
         if (cancelRequested.get() || Thread.currentThread().isInterrupted()) {
             throw new InterruptedException("다운로드 중단");
@@ -265,6 +353,17 @@ public final class SeriesDownloadService extends Service {
             byte[] bytes = NaverApi.downloadBytes(info.thumbnailUrl,
                     NaverApi.listUrl(info.titleId, info.segment), cookie);
             return storage.writeThumbnail(info.titleId, bytes);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String saveJoatoonThumbnail(String titleId, JoatoonApi.SeriesInfo info,
+                                        WebtoonStorage storage, String cookie) {
+        if (info.thumbnailUrl == null || info.thumbnailUrl.isEmpty()) return null;
+        try {
+            byte[] bytes = JoatoonApi.downloadBytes(info.thumbnailUrl, info.pageUrl, cookie);
+            return storage.writeThumbnail(titleId, bytes);
         } catch (Exception ignored) {
             return null;
         }

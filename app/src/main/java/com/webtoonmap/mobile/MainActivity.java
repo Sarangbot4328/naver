@@ -21,6 +21,7 @@ import com.webtoonmap.mobile.ui.NaverChannelView;
 import com.webtoonmap.mobile.ui.SettingsChannelView;
 import com.webtoonmap.mobile.ui.SystemBarInsets;
 import com.webtoonmap.mobile.storage.StorageSettings;
+import com.webtoonmap.mobile.storage.SourceSettings;
 
 public final class MainActivity extends AppCompatActivity {
     private FrameLayout content;
@@ -53,6 +54,7 @@ public final class MainActivity extends AppCompatActivity {
         naverButton = findViewById(R.id.nav_naver);
         downloadsButton = findViewById(R.id.nav_downloads);
         settingsButton = findViewById(R.id.nav_settings);
+        naverButton.setText(SourceSettings.isJoatoon(this) ? "조아툰" : "네이버 웹툰");
         naverView = new NaverChannelView(this);
         downloadsView = new DownloadChannelView(this);
         settingsView = new SettingsChannelView(this);
@@ -102,6 +104,15 @@ public final class MainActivity extends AppCompatActivity {
 
     public void openStorageFolderPicker() {
         folderPicker.launch(null);
+    }
+
+    public void applyChannelSettings() {
+        boolean showing = selectedChannel == 0;
+        if (naverView != null) naverView.destroyWebView();
+        naverView = new NaverChannelView(this);
+        naverButton.setText(SourceSettings.isJoatoon(this) ? "조아툰" : "네이버 웹툰");
+        if (showing) swap(naverView);
+        tintNavigation();
     }
 
     private void swap(android.view.View view) {
