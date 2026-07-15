@@ -1,6 +1,7 @@
 package com.webtoonmap.mobile.ui;
 
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Button;
@@ -28,6 +29,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 public final class OfflineViewerActivity extends AppCompatActivity {
+    private static final String STATE_EPISODE_INDEX = "viewer_episode_index";
+    private static final String STATE_PAGE_INDEX = "viewer_page_index";
+
     private String titleId;
     private List<EpisodeItem> episodes;
     private int episodeIndex;
@@ -36,6 +40,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private Button previous;
     private Button next;
     private boolean pageMode;
+    private volatile int currentPage;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private int loadGeneration;
 
@@ -50,28 +55,36 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         episodes = LibraryDatabase.get(this).listEpisodes(titleId);
         episodeIndex = 0;
         for (int i = 0; i < episodes.size(); i++) if (episodes.get(i).number == episodeNo) episodeIndex = i;
+        if (state != null && !episodes.isEmpty()) {
+            episodeIndex = Math.max(0, Math.min(
+                    state.getInt(STATE_EPISODE_INDEX, episodeIndex), episodes.size() - 1));
+            currentPage = Math.max(0, state.getInt(STATE_PAGE_INDEX, 0));
+        }
 
         webView = findViewById(R.id.image_list);
         titleView = findViewById(R.id.title);
         previous = findViewById(R.id.previous);
         next = findViewById(R.id.next);
         findViewById(R.id.back).setOnClickListener(v -> finish());
-        previous.setOnClickListener(v -> loadEpisode(episodeIndex - 1));
-        next.setOnClickListener(v -> loadEpisode(episodeIndex + 1));
+        previous.setOnClickListener(v -> loadEpisode(episodeIndex - 1, 0));
+        next.setOnClickListener(v -> loadEpisode(episodeIndex + 1, 0));
 
         pageMode = SourceSettings.isPageMode(this);
 
         WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(false);
+        // 페이지 제어 스크립트는 앱이 생성한 로컬 만화책 HTML에서만 실행됩니다.
+        settings.setJavaScriptEnabled(pageMode);
         settings.setAllowFileAccess(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
-        loadEpisode(episodeIndex);
+        if (pageMode) webView.addJavascriptInterface(new ViewerBridge(), "AndroidViewer");
+        loadEpisode(episodeIndex, currentPage);
     }
 
-    private void loadEpisode(int index) {
+    private void loadEpisode(int index, int initialPage) {
         if (index < 0 || index >= episodes.size()) return;
         episodeIndex = index;
+        currentPage = Math.max(0, initialPage);
         EpisodeItem episode = episodes.get(index);
         SeriesItem series = LibraryDatabase.get(this).getSeries(titleId);
         titleView.setText((series == null ? "웹툰" : series.title) + " · " + episode.number + "화");
@@ -89,14 +102,16 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 if (images == null) images = new File[0];
                 Arrays.sort(images, Comparator.comparing(File::getName));
                 boolean hasNext = index + 1 < episodes.size();
-                String html = pageMode ? buildPageHtml(images, hasNext) : buildScrollHtml(images, hasNext);
+                String html = pageMode
+                        ? buildPageHtml(images, hasNext, currentPage)
+                        : buildScrollHtml(images, hasNext);
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
                     LibraryDatabase.get(OfflineViewerActivity.this)
                             .markEpisodeViewed(titleId, episode.number);
                     webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html,
                             "text/html", "UTF-8", null);
-                    webView.scrollTo(0, 0);
+                    if (!pageMode) webView.scrollTo(0, 0);
                 });
             } catch (Exception e) {
                 String message = e.getMessage() == null ? "ZIP 회차를 열지 못했습니다." : e.getMessage();
@@ -118,21 +133,52 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         return html.toString();
     }
 
-    private String buildPageHtml(File[] images, boolean hasNext) {
+    private String buildPageHtml(File[] images, boolean hasNext, int initialPage) {
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>"
                 + "html,body{margin:0;background:#111;height:100%;overflow:hidden}"
-                + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}"
-                + ".page{flex:0 0 100vw;width:100vw;height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center}"
-                + ".page img{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block}"
-                + ".endpage{flex:0 0 100vw;width:100vw;height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;color:#aaa;text-align:center;padding:0 24px}"
-                + "</style></head><body><div class='pager'>");
+                + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow:visible;will-change:transform}"
+                + ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}"
+                + ".page img{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block;-webkit-user-drag:none;user-select:none}"
+                + ".endpage{box-sizing:border-box;flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;color:#aaa;text-align:center;padding:0 24px}"
+                + "</style></head><body><div id='pager' class='pager'>");
         for (File image : images) {
             html.append("<div class='page'><img src='").append(image.getName()).append("'></div>");
         }
         html.append("<div class='endpage'>")
                 .append(hasNext ? "상단의 다음 버튼으로 다음 회차 보기" : "마지막 회차입니다")
-                .append("</div></div></body></html>");
+                .append("</div></div><script>")
+                .append("const pager=document.getElementById('pager');")
+                .append("let currentPage=").append(Math.max(0, initialPage)).append(";")
+                .append("let startX=0,startY=0,tracking=false,wheelLocked=false;")
+                .append("function maxPage(){return Math.max(0,pager.children.length-1);}")
+                .append("function isZoomed(){return window.visualViewport&&window.visualViewport.scale>1.05;}")
+                .append("function reportPage(){if(window.AndroidViewer&&AndroidViewer.onPageChanged){AndroidViewer.onPageChanged(currentPage);}}")
+                .append("function goToPage(page,animated){currentPage=Math.max(0,Math.min(page,maxPage()));pager.style.transition=animated?'transform 180ms ease-out':'none';pager.style.transform='translate3d('+(-currentPage*window.innerWidth)+'px,0,0)';reportPage();}")
+                .append("pager.addEventListener('touchstart',function(e){if(e.touches.length!==1||isZoomed()){tracking=false;return;}tracking=true;startX=e.touches[0].clientX;startY=e.touches[0].clientY;},{passive:true});")
+                .append("pager.addEventListener('touchmove',function(e){if(!tracking||e.touches.length!==1){tracking=false;return;}const dx=e.touches[0].clientX-startX;const dy=e.touches[0].clientY-startY;if(Math.abs(dx)>Math.abs(dy)){e.preventDefault();}},{passive:false});")
+                .append("pager.addEventListener('touchend',function(e){if(!tracking||e.changedTouches.length===0)return;tracking=false;const dx=e.changedTouches[0].clientX-startX;const dy=e.changedTouches[0].clientY-startY;const threshold=Math.max(40,window.innerWidth*0.08);if(Math.abs(dx)>=threshold&&Math.abs(dx)>Math.abs(dy)){goToPage(currentPage+(dx<0?1:-1),true);}else{goToPage(currentPage,true);}},{passive:true});")
+                .append("pager.addEventListener('touchcancel',function(){tracking=false;goToPage(currentPage,true);},{passive:true});")
+                .append("window.addEventListener('wheel',function(e){if(isZoomed()||Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;e.preventDefault();if(wheelLocked)return;wheelLocked=true;goToPage(currentPage+(e.deltaX>0?1:-1),true);setTimeout(function(){wheelLocked=false;},350);},{passive:false});")
+                .append("window.addEventListener('keydown',function(e){if(e.key==='ArrowRight'){e.preventDefault();goToPage(currentPage+1,true);}else if(e.key==='ArrowLeft'){e.preventDefault();goToPage(currentPage-1,true);}});")
+                .append("window.addEventListener('resize',function(){goToPage(currentPage,false);});")
+                .append("window.addEventListener('load',function(){goToPage(currentPage,false);});")
+                .append("window.getCurrentPage=function(){return currentPage;};")
+                .append("goToPage(currentPage,false);")
+                .append("</script></body></html>");
         return html.toString();
+    }
+
+    private final class ViewerBridge {
+        @JavascriptInterface
+        public void onPageChanged(int page) {
+            currentPage = Math.max(0, page);
+        }
+    }
+
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        outState.putInt(STATE_EPISODE_INDEX, episodeIndex);
+        outState.putInt(STATE_PAGE_INDEX, currentPage);
+        super.onSaveInstanceState(outState);
     }
 
     private File extractEpisode(String storageUri, int episode) throws Exception {
