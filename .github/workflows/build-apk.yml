@@ -17,7 +17,6 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/webtoon-map-signing.p12
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -54,6 +53,8 @@ jobs:
       - name: Restore the permanent signing key from GitHub Secret
         shell: bash
         run: |
+          ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/webtoon-map-signing.p12"
+          echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
           if [ ! -s "$ANDROID_KEYSTORE_PATH" ]; then
             echo "::error::Decoded signing key is empty."
