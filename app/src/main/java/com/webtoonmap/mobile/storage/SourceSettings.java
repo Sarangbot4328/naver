@@ -12,13 +12,32 @@ public final class SourceSettings {
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
     public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
     public static final String DEFAULT_ILILTOON_URL = "https://11toon148.com";
+    public static final String VIEW_MODE_SCROLL = "scroll";
+    public static final String VIEW_MODE_PAGE = "page";
     private static final String PREFS = "source_settings";
     private static final String KEY_SOURCE = "source";
     private static final String KEY_JOATOON_URL = "joatoon_url";
     private static final String KEY_MANHWABANG_URL = "manhwabang_url";
     private static final String KEY_ILILTOON_URL = "ililtoon_url";
+    private static final String KEY_VIEW_MODE = "view_mode";
 
     private SourceSettings() { }
+
+    public static String getViewMode(Context context) {
+        String value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_VIEW_MODE, VIEW_MODE_SCROLL);
+        return VIEW_MODE_PAGE.equals(value) ? VIEW_MODE_PAGE : VIEW_MODE_SCROLL;
+    }
+
+    public static boolean isPageMode(Context context) {
+        return VIEW_MODE_PAGE.equals(getViewMode(context));
+    }
+
+    public static void setViewMode(Context context, String mode) {
+        String value = VIEW_MODE_PAGE.equals(mode) ? VIEW_MODE_PAGE : VIEW_MODE_SCROLL;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(KEY_VIEW_MODE, value).apply();
+    }
 
     public static String getSource(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

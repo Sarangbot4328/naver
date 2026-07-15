@@ -12,6 +12,7 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
+import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import java.io.File;
@@ -34,6 +35,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private TextView titleView;
     private Button previous;
     private Button next;
+    private boolean pageMode;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private int loadGeneration;
 
@@ -56,6 +58,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         findViewById(R.id.back).setOnClickListener(v -> finish());
         previous.setOnClickListener(v -> loadEpisode(episodeIndex - 1));
         next.setOnClickListener(v -> loadEpisode(episodeIndex + 1));
+
+        pageMode = SourceSettings.isPageMode(this);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(false);
@@ -84,16 +88,13 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 File[] images = dir.listFiles(file -> file.isFile() && file.getName().matches("(?i).+\\.(jpg|jpeg|png|webp)$"));
                 if (images == null) images = new File[0];
                 Arrays.sort(images, Comparator.comparing(File::getName));
-                StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>html,body{margin:0;background:#111}img{display:block;width:100%;height:auto}</style></head><body>");
-                for (File image : images) html.append("<img src='").append(image.getName()).append("' loading='lazy'>");
-                html.append("<div style='height:64px;color:#aaa;text-align:center;padding-top:30px'>")
-                        .append(index + 1 < episodes.size() ? "상단의 다음 버튼으로 계속 보기" : "마지막 회차입니다")
-                        .append("</div></body></html>");
+                boolean hasNext = index + 1 < episodes.size();
+                String html = pageMode ? buildPageHtml(images, hasNext) : buildScrollHtml(images, hasNext);
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
                     LibraryDatabase.get(OfflineViewerActivity.this)
                             .markEpisodeViewed(titleId, episode.number);
-                    webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html.toString(),
+                    webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html,
                             "text/html", "UTF-8", null);
                     webView.scrollTo(0, 0);
                 });
@@ -106,6 +107,32 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 });
             }
         });
+    }
+
+    private String buildScrollHtml(File[] images, boolean hasNext) {
+        StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>html,body{margin:0;background:#111}img{display:block;width:100%;height:auto}</style></head><body>");
+        for (File image : images) html.append("<img src='").append(image.getName()).append("' loading='lazy'>");
+        html.append("<div style='height:64px;color:#aaa;text-align:center;padding-top:30px'>")
+                .append(hasNext ? "상단의 다음 버튼으로 계속 보기" : "마지막 회차입니다")
+                .append("</div></body></html>");
+        return html.toString();
+    }
+
+    private String buildPageHtml(File[] images, boolean hasNext) {
+        StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>"
+                + "html,body{margin:0;background:#111;height:100%;overflow:hidden}"
+                + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}"
+                + ".page{flex:0 0 100vw;width:100vw;height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center}"
+                + ".page img{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block}"
+                + ".endpage{flex:0 0 100vw;width:100vw;height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;color:#aaa;text-align:center;padding:0 24px}"
+                + "</style></head><body><div class='pager'>");
+        for (File image : images) {
+            html.append("<div class='page'><img src='").append(image.getName()).append("'></div>");
+        }
+        html.append("<div class='endpage'>")
+                .append(hasNext ? "상단의 다음 버튼으로 다음 회차 보기" : "마지막 회차입니다")
+                .append("</div></div></body></html>");
+        return html.toString();
     }
 
     private File extractEpisode(String storageUri, int episode) throws Exception {

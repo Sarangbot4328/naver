@@ -100,23 +100,17 @@
                 android:textColor="@color/text_primary"
                 android:textSize="14sp" />
             <TextView
-                android:id="@+id/telegram_command"
+                android:id="@+id/activation_guide"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="18dp"
                 android:background="@color/background"
+                android:lineSpacingExtra="4dp"
                 android:padding="14dp"
+                android:text="관리자에게 위 등록 사용자명을 알려주고 활성화 비밀번호를 요청하세요.\n관리자가 승인하면 아래에 암호 입력칸이 나타납니다."
                 android:textColor="@color/green_dark"
-                android:textIsSelectable="true"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
-            <Button
-                android:id="@+id/copy_command"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="10dp"
-                android:text="명령어 복사"
-                android:textAllCaps="false" />
             <LinearLayout
                 android:id="@+id/code_section"
                 android:layout_width="match_parent"

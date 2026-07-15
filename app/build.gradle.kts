@@ -13,8 +13,8 @@ android {
         applicationId = "com.webtoonmap.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.1"
+        versionCode = 14
+        versionName = "1.2"
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"$telegramBotToken\"")
         buildConfigField("String", "TELEGRAM_ADMIN_CHAT_ID", "\"$telegramAdminChatId\"")
     }

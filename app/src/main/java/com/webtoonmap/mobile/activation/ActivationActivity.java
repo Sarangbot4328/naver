@@ -1,8 +1,5 @@
 package com.webtoonmap.mobile.activation;
 
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
@@ -23,7 +20,6 @@ public final class ActivationActivity extends AppCompatActivity {
     private EditText userNameInput;
     private EditText activationCode;
     private TextView registeredName;
-    private TextView commandText;
     private TextView statusText;
     private TelegramActivationClient telegramClient;
 
@@ -42,11 +38,9 @@ public final class ActivationActivity extends AppCompatActivity {
         userNameInput = findViewById(R.id.user_name_input);
         activationCode = findViewById(R.id.activation_code);
         registeredName = findViewById(R.id.registered_name);
-        commandText = findViewById(R.id.telegram_command);
         statusText = findViewById(R.id.activation_status);
 
         findViewById(R.id.save_user_name).setOnClickListener(v -> saveUserName());
-        findViewById(R.id.copy_command).setOnClickListener(v -> copyCommand());
         findViewById(R.id.verify_activation).setOnClickListener(v -> verifyCode());
         render();
     }
@@ -72,12 +66,11 @@ public final class ActivationActivity extends AppCompatActivity {
         if (needsName) return;
 
         registeredName.setText("등록 사용자: " + userName);
-        commandText.setText(commandFor(userName));
         boolean pending = ActivationStore.hasPendingCode(this);
         codeSection.setVisibility(pending ? View.VISIBLE : View.GONE);
         statusText.setText(pending ?
-                "텔레그램 명령을 확인했습니다. 괄호 안의 활성화 암호를 입력하세요." :
-                "텔레그램 연결을 준비하고 있습니다…");
+                "관리자 승인을 확인했습니다. 관리자에게 받은 활성화 암호를 입력하세요." :
+                "관리자 승인을 준비하고 있습니다…");
 
         if (!TelegramActivationClient.isConfigured()) {
             statusText.setText("이 APK에는 텔레그램 인증 정보가 설정되지 않았습니다.");
@@ -93,7 +86,7 @@ public final class ActivationActivity extends AppCompatActivity {
                     @Override public void onReady() {
                         runOnUiThread(() -> {
                             if (!ActivationStore.hasPendingCode(ActivationActivity.this)) {
-                                statusText.setText("명령 대기 중입니다. 아래 명령을 텔레그램으로 보내세요.");
+                                statusText.setText("관리자 승인을 기다리는 중입니다. 관리자에게 비밀번호를 요청하세요.");
                             }
                         });
                     }
@@ -101,7 +94,7 @@ public final class ActivationActivity extends AppCompatActivity {
                     @Override public void onPendingCode() {
                         runOnUiThread(() -> {
                             codeSection.setVisibility(View.VISIBLE);
-                            statusText.setText("텔레그램 명령을 확인했습니다. 괄호 안의 활성화 암호를 입력하세요.");
+                            statusText.setText("관리자 승인을 확인했습니다. 관리자에게 받은 활성화 암호를 입력하세요.");
                             activationCode.requestFocus();
                         });
                     }
@@ -111,13 +104,6 @@ public final class ActivationActivity extends AppCompatActivity {
                     }
                 });
         telegramClient.start();
-    }
-
-    private void copyCommand() {
-        String command = commandFor(ActivationStore.getUserName(this));
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboard.setPrimaryClip(ClipData.newPlainText("웹툰모바일 활성화 명령", command));
-        Toast.makeText(this, "텔레그램 명령을 복사했습니다.", Toast.LENGTH_SHORT).show();
     }
 
     private void verifyCode() {
@@ -130,10 +116,6 @@ public final class ActivationActivity extends AppCompatActivity {
         if (telegramClient != null) telegramClient.notifyActivated(messageId);
         Toast.makeText(this, "영구 활성화되었습니다.", Toast.LENGTH_SHORT).show();
         openMain();
-    }
-
-    private String commandFor(String userName) {
-        return "/웹툰모바일 " + userName + " (비번)";
     }
 
     private void openMain() {

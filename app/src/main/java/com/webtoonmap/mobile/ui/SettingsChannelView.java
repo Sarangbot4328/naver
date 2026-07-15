@@ -16,6 +16,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final MainActivity activity;
     private final TextView version;
     private final RadioGroup sourceGroup;
+    private final RadioGroup viewModeGroup;
     private final View joatoonAddressBox;
     private final View manhwabangAddressBox;
     private final View ililtoonAddressBox;
@@ -30,6 +31,7 @@ public final class SettingsChannelView extends FrameLayout {
         LayoutInflater.from(activity).inflate(R.layout.channel_settings, this, true);
         version = findViewById(R.id.app_version);
         sourceGroup = findViewById(R.id.source_group);
+        viewModeGroup = findViewById(R.id.view_mode_group);
         joatoonAddressBox = findViewById(R.id.joatoon_address_box);
         manhwabangAddressBox = findViewById(R.id.manhwabang_address_box);
         ililtoonAddressBox = findViewById(R.id.ililtoon_address_box);
@@ -45,6 +47,16 @@ public final class SettingsChannelView extends FrameLayout {
             Toast.makeText(activity, SourceSettings.channelLabel(activity) +
                     " 채널로 변경했습니다.", Toast.LENGTH_SHORT).show();
         });
+        viewModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (refreshing) return;
+            String mode = checkedId == R.id.view_mode_page
+                    ? SourceSettings.VIEW_MODE_PAGE : SourceSettings.VIEW_MODE_SCROLL;
+            SourceSettings.setViewMode(activity, mode);
+            Toast.makeText(activity, checkedId == R.id.view_mode_page
+                            ? "만화책 방식(옆으로 넘김)으로 변경했습니다."
+                            : "웹툰 방식(아래로 스크롤)으로 변경했습니다.",
+                    Toast.LENGTH_SHORT).show();
+        });
         findViewById(R.id.save_joatoon_url).setOnClickListener(v -> saveJoatoonUrl());
         findViewById(R.id.save_manhwabang_url).setOnClickListener(v -> saveManhwabangUrl());
         findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
@@ -56,6 +68,8 @@ public final class SettingsChannelView extends FrameLayout {
         String source = SourceSettings.getSource(activity);
         sourceGroup.check(checkedIdForSource(source));
         updateAddressVisibility(source);
+        viewModeGroup.check(SourceSettings.isPageMode(activity)
+                ? R.id.view_mode_page : R.id.view_mode_scroll);
         joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
         manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));

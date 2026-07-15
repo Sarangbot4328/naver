@@ -80,6 +80,24 @@
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="웹툰 보기 방식" android:textColor="@color/text_primary"
+                android:textSize="17sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="7dp" android:text="다운로드한 회차를 볼 때 페이지 넘김 방식을 선택합니다."
+                android:textColor="@color/text_secondary" android:textSize="13sp" />
+            <RadioGroup android:id="@+id/view_mode_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical">
+                <RadioButton android:id="@+id/view_mode_scroll" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="웹툰 방식 (아래로 스크롤)" />
+                <RadioButton android:id="@+id/view_mode_page" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="만화책 방식 (옆으로 넘김)" />
+            </RadioGroup>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:background="@color/surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="앱 정보" android:textColor="@color/text_primary"
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
