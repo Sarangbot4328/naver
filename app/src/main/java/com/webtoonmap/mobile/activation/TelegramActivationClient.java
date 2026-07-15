@@ -20,7 +20,10 @@ import java.util.regex.Pattern;
 
 public final class TelegramActivationClient {
     private static final Pattern COMMAND = Pattern.compile(
-            "^/웹툰모바일\\s+(.+?)\\s+\\((.+?)\\)\\s*$");
+            "^/웹툰모바일\\s+(.+?)\\s+[\\(（](.+?)[\\)）]\\s*$");
+
+    private static final String BOT_TOKEN = BuildConfig.TELEGRAM_BOT_TOKEN.trim();
+    private static final String ADMIN_CHAT_ID = BuildConfig.TELEGRAM_ADMIN_CHAT_ID.trim();
 
     public interface Listener {
         void onReady();
@@ -40,12 +43,11 @@ public final class TelegramActivationClient {
         this.context = context.getApplicationContext();
         this.userName = ActivationStore.normalizeName(userName);
         this.listener = listener;
-        this.apiBase = "https://api.telegram.org/bot" + BuildConfig.TELEGRAM_BOT_TOKEN + "/";
+        this.apiBase = "https://api.telegram.org/bot" + BOT_TOKEN + "/";
     }
 
     public static boolean isConfigured() {
-        return !BuildConfig.TELEGRAM_BOT_TOKEN.trim().isEmpty() &&
-                !BuildConfig.TELEGRAM_ADMIN_CHAT_ID.trim().isEmpty();
+        return !BOT_TOKEN.isEmpty() && !ADMIN_CHAT_ID.isEmpty();
     }
 
     public void start() {
@@ -70,13 +72,7 @@ public final class TelegramActivationClient {
     private void pollLoop() {
         try {
             long lastUpdateId = ActivationStore.getTelegramUpdateId(context);
-            if (lastUpdateId == 0L) {
-                JSONObject baseline = getUpdates(-1L, 0);
-                lastUpdateId = newestUpdateId(baseline.optJSONArray("result"), 0L);
-                ActivationStore.setTelegramUpdateId(context, lastUpdateId);
-            }
             listener.onReady();
-
             while (running && !ActivationStore.isActivated(context)) {
                 try {
                     JSONObject response = getUpdates(lastUpdateId + 1L, 20);
@@ -94,7 +90,13 @@ public final class TelegramActivationClient {
                     }
                 } catch (Exception e) {
                     if (!running) break;
-                    listener.onConnectionMessage("텔레그램 연결을 다시 시도하고 있습니다…");
+                    String detail = e.getMessage() == null ? "" : e.getMessage();
+                    if (detail.contains("409")) {
+                        listener.onConnectionMessage(
+                                "같은 텔레그램 봇을 사용하는 다른 프로그램을 종료해 주세요.");
+                    } else {
+                        listener.onConnectionMessage("텔레그램 연결을 다시 시도하고 있습니다…");
+                    }
                     try { Thread.sleep(3000L); }
                     catch (InterruptedException interrupted) {
                         Thread.currentThread().interrupt();
@@ -111,7 +113,7 @@ public final class TelegramActivationClient {
         JSONObject message = update.optJSONObject("message");
         if (message == null) return;
         JSONObject chat = message.optJSONObject("chat");
-        if (chat == null || !BuildConfig.TELEGRAM_ADMIN_CHAT_ID.equals(
+        if (chat == null || !ADMIN_CHAT_ID.equals(
                 String.valueOf(chat.optLong("id")))) return;
         String text = message.optString("text", "").trim();
         if (!text.startsWith("/웹툰모바일")) return;
@@ -119,12 +121,20 @@ public final class TelegramActivationClient {
         long messageId = message.optLong("message_id", 0L);
         Matcher matcher = COMMAND.matcher(text);
         if (!matcher.matches()) {
-            sendMessage("형식이 올바르지 않습니다. 예: /웹툰모바일 사용자 (1234)", messageId);
+            sendMessage("형식이 올바르지 않습니다. 예: /웹툰모바일 " + userName + " (1234)", messageId);
             return;
         }
         String target = ActivationStore.normalizeName(matcher.group(1));
         String code = matcher.group(2).trim();
-        if (!target.equals(userName) || code.isEmpty()) return;
+        if (code.isEmpty()) {
+            sendMessage("활성화 코드가 비어 있습니다. 예: /웹툰모바일 " + userName + " (1234)", messageId);
+            return;
+        }
+        if (!target.equals(userName)) {
+            sendMessage("이 기기의 등록 사용자명은 「" + userName + "」입니다. (요청: 「" + target + "」)\n"
+                    + "이 기기를 활성화하려면 /웹툰모바일 " + userName + " (" + code + ") 를 보내세요.", messageId);
+            return;
+        }
 
         ActivationStore.setPendingCode(context, code, messageId);
         sendMessage("🔒 [웹툰모바일 · " + userName + "] 코드 입력 대기 중…", messageId);
@@ -152,7 +162,7 @@ public final class TelegramActivationClient {
         try {
             connection = open(new URL(apiBase + "sendMessage"), "POST");
             JSONObject body = new JSONObject()
-                    .put("chat_id", BuildConfig.TELEGRAM_ADMIN_CHAT_ID)
+                    .put("chat_id", ADMIN_CHAT_ID)
                     .put("text", text);
             if (replyToMessageId > 0L) body.put("reply_to_message_id", replyToMessageId);
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
@@ -175,16 +185,6 @@ public final class TelegramActivationClient {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("User-Agent", "WebtoonMapMobile/1.1");
         return connection;
-    }
-
-    private static long newestUpdateId(JSONArray updates, long fallback) {
-        long result = fallback;
-        if (updates == null) return result;
-        for (int i = 0; i < updates.length(); i++) {
-            JSONObject update = updates.optJSONObject(i);
-            if (update != null) result = Math.max(result, update.optLong("update_id", 0L));
-        }
-        return result;
     }
 
     private static String readText(InputStream input) throws Exception {
