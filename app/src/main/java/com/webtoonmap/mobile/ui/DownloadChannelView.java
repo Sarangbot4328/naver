@@ -106,7 +106,8 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             SeriesItem item = items.get(position);
             h.title.setText(item.title);
             h.tags.setText(item.tags.isEmpty() ? "태그 없음" : "# " + item.tags.replace(",", "  #"));
-            String suffix = "complete".equals(item.status) ? "" : " · " + statusLabel(item);
+            String state = statusLabel(item);
+            String suffix = state.isEmpty() ? "" : " · " + state;
             h.count.setText(item.episodeCount + "개 회차" + suffix);
             h.image.setImageDrawable(null);
             h.image.setTag(item.thumbnailPath);
@@ -121,7 +122,24 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                 intent.putExtra("title_id", item.titleId);
                 getContext().startActivity(intent);
             });
+            h.resume.setOnClickListener(v -> resumeDownload(item));
             h.delete.setOnClickListener(v -> confirmDelete(item));
+        }
+
+        private void resumeDownload(SeriesItem item) {
+            if (SeriesDownloadService.isDownloading(item.titleId)) {
+                Toast.makeText(getContext(), "이 작품을 이미 다운로드하고 있습니다.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (SeriesDownloadService.isQueued(getContext(), item.titleId)) {
+                Toast.makeText(getContext(), "이미 다운로드 대기열에 있습니다.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            boolean queueMode = SeriesDownloadService.isRunning();
+            status.setText("‘" + item.title + "’ " + (queueMode ? "대기열 추가 중…" : "이어받기 준비 중…"));
+            SeriesDownloadService.enqueue(getContext(), item.titleId);
+            Toast.makeText(getContext(), queueMode ? "이어받기를 대기열에 추가했습니다." :
+                    "완성되지 않은 회차부터 이어받습니다.", Toast.LENGTH_SHORT).show();
         }
 
         private Bitmap decodeThumbnail(String path) {
@@ -134,8 +152,9 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         }
 
         private void confirmDelete(SeriesItem item) {
-            if (SeriesDownloadService.isDownloading(item.titleId)) {
-                Toast.makeText(getContext(), "다운로드 중인 작품은 완료 후 삭제해 주세요.", Toast.LENGTH_SHORT).show();
+            if (SeriesDownloadService.isDownloading(item.titleId) ||
+                    SeriesDownloadService.isQueued(getContext(), item.titleId)) {
+                Toast.makeText(getContext(), "다운로드 중이거나 대기열에 있는 작품은 삭제할 수 없습니다.", Toast.LENGTH_SHORT).show();
                 return;
             }
             new AlertDialog.Builder(getContext())
@@ -161,23 +180,26 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         }
 
         private String statusLabel(SeriesItem item) {
+            if (SeriesDownloadService.isDownloading(item.titleId)) return "다운로드 중";
+            if (SeriesDownloadService.isQueued(getContext(), item.titleId)) return "대기열";
             if ("downloading".equals(item.status)) {
-                return SeriesDownloadService.isDownloading(item.titleId) ? "다운로드 중" : "이어받기 필요";
+                return "이어받기 필요";
             }
-            if ("error".equals(item.status)) return "이어받기 필요";
-            return item.status;
+            if ("error".equals(item.status) || "paused".equals(item.status)) return "이어받기 필요";
+            return "complete".equals(item.status) ? "" : item.status;
         }
 
         @Override public int getItemCount() { return items.size(); }
 
         final class Holder extends RecyclerView.ViewHolder {
-            final ImageView image; final TextView title, tags, count; final Button delete;
+            final ImageView image; final TextView title, tags, count; final Button resume, delete;
             Holder(View view) {
                 super(view);
                 image = view.findViewById(R.id.thumbnail);
                 title = view.findViewById(R.id.title);
                 tags = view.findViewById(R.id.tags);
                 count = view.findViewById(R.id.count);
+                resume = view.findViewById(R.id.resume);
                 delete = view.findViewById(R.id.delete);
             }
         }

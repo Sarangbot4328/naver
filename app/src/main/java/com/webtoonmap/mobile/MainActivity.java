@@ -57,7 +57,10 @@ public final class MainActivity extends AppCompatActivity {
         downloadsView = new DownloadChannelView(this);
         settingsView = new SettingsChannelView(this);
 
-        naverButton.setOnClickListener(v -> showNaver());
+        naverButton.setOnClickListener(v -> {
+            showNaver();
+            naverView.goHome();
+        });
         downloadsButton.setOnClickListener(v -> showDownloads());
         settingsButton.setOnClickListener(v -> showSettings());
         showNaver();

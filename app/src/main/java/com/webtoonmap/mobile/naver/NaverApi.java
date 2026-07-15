@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -122,7 +123,12 @@ public final class NaverApi {
             try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 byte[] buffer = new byte[32 * 1024];
                 int n;
-                while ((n = in.read(buffer)) >= 0) out.write(buffer, 0, n);
+                while ((n = in.read(buffer)) >= 0) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedIOException("이미지 다운로드 중단");
+                    }
+                    out.write(buffer, 0, n);
+                }
                 return out.toByteArray();
             }
         } finally {
@@ -138,7 +144,12 @@ public final class NaverApi {
             try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 byte[] buffer = new byte[16 * 1024];
                 int n;
-                while ((n = in.read(buffer)) >= 0) out.write(buffer, 0, n);
+                while ((n = in.read(buffer)) >= 0) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedIOException("네이버 요청 중단");
+                    }
+                    out.write(buffer, 0, n);
+                }
                 return out.toString(StandardCharsets.UTF_8.name());
             }
         } finally {

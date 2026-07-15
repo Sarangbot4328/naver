@@ -10,6 +10,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.Locale;
 
@@ -74,7 +75,12 @@ public final class WebtoonStorage {
             ensureDirectory(dir);
             File target = new File(dir, name);
             File pending = new File(dir, name + ".part");
-            copyFile(source, pending);
+            try {
+                copyFile(source, pending);
+            } catch (IOException e) {
+                pending.delete();
+                throw e;
+            }
             if (target.exists() && !target.delete()) {
                 pending.delete();
                 throw new IOException("기존 ZIP 삭제 실패");
@@ -132,6 +138,30 @@ public final class WebtoonStorage {
         return file != null && file.isFile();
     }
 
+    public void cleanupIncomplete(String titleId) throws IOException {
+        if (treeUri == null) {
+            File dir = defaultSeriesDir(titleId);
+            File[] children = dir.listFiles();
+            if (children == null) return;
+            for (File child : children) {
+                if (isIncompleteArtifact(child.getName(), child.isDirectory()) &&
+                        !deleteRecursively(child)) {
+                    throw new IOException("미완성 회차 파일 정리 실패: " + child.getName());
+                }
+            }
+            return;
+        }
+
+        DocumentFile dir = externalSeriesDir(titleId, false);
+        if (dir == null) return;
+        for (DocumentFile child : dir.listFiles()) {
+            String name = child.getName();
+            if (name != null && isIncompleteArtifact(name, child.isDirectory()) && !child.delete()) {
+                throw new IOException("미완성 회차 파일 정리 실패: " + name);
+            }
+        }
+    }
+
     public boolean deleteSeries(String titleId) {
         if (treeUri == null) return deleteRecursively(defaultSeriesDir(titleId));
         DocumentFile dir = externalSeriesDir(titleId, false);
@@ -155,6 +185,13 @@ public final class WebtoonStorage {
         return String.format(Locale.US, "%03d.zip", episode);
     }
 
+    private static boolean isIncompleteArtifact(String name, boolean directory) {
+        String lower = name.toLowerCase(Locale.US);
+        if (lower.contains(".part") || lower.endsWith(".tmp")) return true;
+        if (directory && lower.matches("\\d{1,4}([_-](images?|temp|tmp))?")) return true;
+        return !directory && lower.matches("\\d{1,4}[-_]\\d{1,4}\\.(jpe?g|png|webp|gif)");
+    }
+
     private static void ensureDirectory(File dir) throws IOException {
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("저장 폴더 생성 실패");
     }
@@ -168,7 +205,12 @@ public final class WebtoonStorage {
     private static void copy(InputStream in, OutputStream out) throws IOException {
         byte[] buffer = new byte[64 * 1024];
         int count;
-        while ((count = in.read(buffer)) >= 0) out.write(buffer, 0, count);
+        while ((count = in.read(buffer)) >= 0) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("파일 저장 중단");
+            }
+            out.write(buffer, 0, count);
+        }
     }
 
     public static boolean deleteRecursively(File file) {

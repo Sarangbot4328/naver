@@ -91,6 +91,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                         .append("</div></body></html>");
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
+                    LibraryDatabase.get(OfflineViewerActivity.this)
+                            .markEpisodeViewed(titleId, episode.number);
                     webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html.toString(),
                             "text/html", "UTF-8", null);
                     webView.scrollTo(0, 0);

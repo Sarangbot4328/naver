@@ -14,12 +14,14 @@ import com.webtoonmap.mobile.storage.StorageSettings;
 public final class SettingsChannelView extends FrameLayout {
     private final MainActivity activity;
     private final TextView path;
+    private final TextView version;
 
     public SettingsChannelView(MainActivity activity) {
         super(activity);
         this.activity = activity;
         LayoutInflater.from(activity).inflate(R.layout.channel_settings, this, true);
         path = findViewById(R.id.storage_path);
+        version = findViewById(R.id.app_version);
         findViewById(R.id.choose_folder).setOnClickListener(v -> activity.openStorageFolderPicker());
         findViewById(R.id.reset_folder).setOnClickListener(v -> confirmReset());
         refresh();
@@ -27,6 +29,13 @@ public final class SettingsChannelView extends FrameLayout {
 
     public void refresh() {
         path.setText(StorageSettings.displayName(activity));
+        try {
+            String name = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0).versionName;
+            version.setText("버전 " + name);
+        } catch (Exception ignored) {
+            version.setText("버전 1.1");
+        }
     }
 
     private void confirmReset() {

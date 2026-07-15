@@ -11,7 +11,7 @@ import java.util.List;
 
 public final class LibraryDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "webtoon_map.db";
-    private static final int DB_VERSION = 2;
+    private static final int DB_VERSION = 3;
     private static volatile LibraryDatabase instance;
 
     public static LibraryDatabase get(Context context) {
@@ -34,7 +34,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "downloaded_at INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE episodes (" +
                 "title_id TEXT NOT NULL, episode_no INTEGER NOT NULL, title TEXT NOT NULL, " +
-                "image_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(title_id, episode_no), " +
+                "image_count INTEGER NOT NULL DEFAULT 0, viewed INTEGER NOT NULL DEFAULT 0, " +
+                "PRIMARY KEY(title_id, episode_no), " +
                 "FOREIGN KEY(title_id) REFERENCES series(title_id) ON DELETE CASCADE)");
     }
 
@@ -45,6 +46,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE series ADD COLUMN storage_uri TEXT");
+        if (oldVersion < 3) db.execSQL(
+                "ALTER TABLE episodes ADD COLUMN viewed INTEGER NOT NULL DEFAULT 0");
     }
 
     public void upsertSeries(SeriesItem item) {
@@ -75,7 +78,10 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         v.put("episode_no", item.number);
         v.put("title", item.title);
         v.put("image_count", item.imageCount);
-        getWritableDatabase().insertWithOnConflict("episodes", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        SQLiteDatabase db = getWritableDatabase();
+        int updated = db.update("episodes", v, "title_id=? AND episode_no=?",
+                new String[]{item.titleId, String.valueOf(item.number)});
+        if (updated == 0) db.insertOrThrow("episodes", null, v);
     }
 
     public boolean hasCompleteEpisode(String titleId, int number) {
@@ -113,13 +119,21 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public List<EpisodeItem> listEpisodes(String titleId) {
         List<EpisodeItem> out = new ArrayList<>();
         try (Cursor c = getReadableDatabase().rawQuery(
-                "SELECT episode_no,title,image_count FROM episodes WHERE title_id=? ORDER BY episode_no",
+                "SELECT episode_no,title,image_count,viewed FROM episodes WHERE title_id=? ORDER BY episode_no",
                 new String[]{titleId})) {
             while (c.moveToNext()) {
-                out.add(new EpisodeItem(titleId, c.getInt(0), c.getString(1), c.getInt(2)));
+                out.add(new EpisodeItem(titleId, c.getInt(0), c.getString(1),
+                        c.getInt(2), c.getInt(3) != 0));
             }
         }
         return out;
+    }
+
+    public void markEpisodeViewed(String titleId, int number) {
+        ContentValues v = new ContentValues();
+        v.put("viewed", 1);
+        getWritableDatabase().update("episodes", v, "title_id=? AND episode_no=?",
+                new String[]{titleId, String.valueOf(number)});
     }
 
     public void deleteSeries(String titleId) {
