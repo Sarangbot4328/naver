@@ -10,8 +10,8 @@ android {
         applicationId = "com.webtoonmap.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 6
+        versionName = "1.1"
     }
 
     buildTypes {
