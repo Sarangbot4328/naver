@@ -135,18 +135,33 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         exportButton.setEnabled(false);
         exportButton.setText("압축 중…");
         status.setText(items.size() + "개 작품 내보내기 준비 중…");
+        AlertDialog progressDialog = new AlertDialog.Builder(getContext())
+                .setTitle("데이터 내보내기")
+                .setMessage(items.size() + "개 작품 내보내기 준비 중…")
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
         executor.execute(() -> {
             try {
                 LibraryDatabase database = LibraryDatabase.get(getContext());
                 File file = SeriesExporter.export(getContext(), items, database,
-                        (current, total) -> post(() -> status.setText(
-                                items.size() + "개 작품 압축 중 · " + current + "/" + total + "회차")));
+                        (current, total) -> post(() -> {
+                            String text = items.size() + "개 작품 압축 중 · " + current + "/" + total + "회차";
+                            status.setText(text);
+                            progressDialog.setMessage(text);
+                        }));
                 post(() -> {
                     exporting = false;
                     exportButton.setEnabled(true);
                     exportButton.setText("내보내기");
                     status.setText("내보내기 완료 · " + file.getName());
-                    shareExport(file);
+                    progressDialog.dismiss();
+                    new AlertDialog.Builder(getContext())
+                            .setTitle("내보내기 완료")
+                            .setMessage(items.size() + "개 작품을 하나의 파일로 만들었습니다.\n" + file.getName())
+                            .setPositiveButton("공유하기", (dialog, which) -> shareExport(file))
+                            .setNegativeButton("닫기", null)
+                            .show();
                 });
             } catch (Exception error) {
                 String message = error.getMessage() == null ?
@@ -156,6 +171,12 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                     exportButton.setEnabled(adapter.getItemCount() > 0);
                     exportButton.setText("내보내기");
                     status.setText("내보내기 실패");
+                    progressDialog.dismiss();
+                    new AlertDialog.Builder(getContext())
+                            .setTitle("내보내기 실패")
+                            .setMessage(message)
+                            .setPositiveButton("확인", null)
+                            .show();
                     Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
                 });
             }

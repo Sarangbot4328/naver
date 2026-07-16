@@ -12,6 +12,7 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 
 import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
@@ -101,7 +102,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("버전 1.1");
+            version.setText("버전 1.3");
         }
         refreshing = false;
     }
@@ -112,11 +113,20 @@ public final class SettingsChannelView extends FrameLayout {
         importButton.setEnabled(false);
         importButton.setText("가져오는 중…");
         importStatus.setText("파일을 확인하는 중…");
+        AlertDialog progressDialog = new AlertDialog.Builder(activity)
+                .setTitle("데이터 가져오기")
+                .setMessage("파일을 확인하는 중…")
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
         importExecutor.execute(() -> {
             try {
                 TransferImporter.Result result = TransferImporter.importArchive(activity, uri,
-                        (current, total, title) -> post(() -> importStatus.setText(
-                                current + "/" + total + " · ‘" + title + "’ 복원 중")));
+                        (current, total, title) -> post(() -> {
+                            String text = current + "/" + total + " · ‘" + title + "’ 복원 중";
+                            importStatus.setText(text);
+                            progressDialog.setMessage(text);
+                        }));
                 post(() -> {
                     importing = false;
                     importButton.setEnabled(true);
@@ -129,6 +139,12 @@ public final class SettingsChannelView extends FrameLayout {
                     } else {
                         importStatus.setText(summary);
                     }
+                    progressDialog.dismiss();
+                    new AlertDialog.Builder(activity)
+                            .setTitle("가져오기 완료")
+                            .setMessage(summary + (result.errors.isEmpty() ? "" : "\n" + result.errors.get(0)))
+                            .setPositiveButton("확인", null)
+                            .show();
                     Toast.makeText(activity, summary, Toast.LENGTH_LONG).show();
                 });
             } catch (Exception error) {
@@ -138,6 +154,12 @@ public final class SettingsChannelView extends FrameLayout {
                     importButton.setEnabled(true);
                     importButton.setText("데이터 가져오기");
                     importStatus.setText("가져오기 실패 · " + message);
+                    progressDialog.dismiss();
+                    new AlertDialog.Builder(activity)
+                            .setTitle("가져오기 실패")
+                            .setMessage(message)
+                            .setPositiveButton("확인", null)
+                            .show();
                     Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
                 });
             }

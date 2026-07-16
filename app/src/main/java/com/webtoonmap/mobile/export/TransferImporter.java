@@ -8,6 +8,7 @@ import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
+import com.webtoonmap.mobile.download.SourceJobStore;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -77,6 +78,7 @@ public final class TransferImporter {
                 throw new IOException("지원하지 않는 데이터 이전 파일입니다.");
             }
             JSONArray items = manifest.optJSONArray("webtoons");
+            boolean forceUnread = !"android".equalsIgnoreCase(manifest.optString("exporter", "pc"));
             if (items == null || items.length() == 0) {
                 throw new IOException("가져올 작품이 없습니다.");
             }
@@ -87,7 +89,7 @@ public final class TransferImporter {
                 JSONObject item = items.optJSONObject(i);
                 String title = item == null ? "웹툰" : item.optString("title", "웹툰");
                 try {
-                    imported.add(importOne(context, database, zip, item));
+                    imported.add(importOne(context, database, zip, item, forceUnread));
                 } catch (Exception error) {
                     errors.add("‘" + title + "’: " +
                             (error.getMessage() == null ? "가져오기 실패" : error.getMessage()));
@@ -101,7 +103,7 @@ public final class TransferImporter {
     }
 
     private static String importOne(Context context, LibraryDatabase database, ZipFile zip,
-                                    JSONObject item) throws Exception {
+                                    JSONObject item, boolean forceUnread) throws Exception {
         if (item == null) throw new IOException("작품 정보가 비어 있습니다.");
         String slug = item.optString("slug", "").trim();
         if (!slug.matches("[A-Za-z0-9_-]{1,80}")) throw new IOException("잘못된 작품 식별자입니다.");
@@ -144,9 +146,9 @@ public final class TransferImporter {
                 int imageCount = stageEpisode(zip, slug, folderName, stagedZip);
                 if (imageCount <= 0) throw new IOException(number + "화 이미지가 없습니다.");
                 String episodeTitle = episode.optString("title", number + "화");
-                boolean viewed = episode.has("viewed")
+                boolean viewed = !forceUnread && (episode.has("viewed")
                         ? episode.optBoolean("viewed", false)
-                        : lastRead >= number;
+                        : lastRead >= number);
                 staged.add(new StagedEpisode(number, episodeTitle, imageCount, viewed, stagedZip));
             }
             if (staged.isEmpty()) throw new IOException("가져올 수 있는 회차가 없습니다.");
@@ -163,6 +165,16 @@ public final class TransferImporter {
             }
             String description = item.isNull("description") ? "" : item.optString("description", "");
             String tags = tagsCsv(item.opt("tags"));
+            String pageUrl = item.isNull("page_url") ? "" : item.optString("page_url", "").trim();
+            if (!"naver".equals(source) && !pageUrl.isEmpty()) {
+                Uri parsed = Uri.parse(pageUrl);
+                String kind = parsed.getQueryParameter("bo_table");
+                if (kind == null || kind.isEmpty()) {
+                    String path = parsed.getPath();
+                    kind = path != null && path.contains("/manhua/") ? "manhua" : "webtoon";
+                }
+                SourceJobStore.register(context, titleId, source, pageUrl, rawTitleId, kind);
+            }
             database.upsertSeries(new SeriesItem(titleId, title, description, tags,
                     thumbnailPath, null, "completed", staged.size()));
             for (StagedEpisode episode : staged) {

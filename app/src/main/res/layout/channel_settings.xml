@@ -102,7 +102,7 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="7dp"
-                android:text="PC판 또는 앱에서 내보낸 .wtoon.zip 파일을 가져옵니다. 회차·썸네일·제목·태그·읽음 상태가 복원됩니다."
+                android:text="PC판 또는 앱에서 내보낸 .wtoon.zip 파일을 가져옵니다. PC판에서 가져온 회차는 실제로 앱에서 읽기 전까지 모두 안 읽음으로 표시됩니다."
                 android:textColor="@color/text_secondary" android:textSize="13sp" />
             <Button android:id="@+id/import_transfer" android:layout_width="match_parent"
                 android:layout_height="50dp" android:layout_marginTop="12dp"
@@ -119,7 +119,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.1" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.3" android:textColor="@color/text_secondary" android:textSize="14sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:text="1.3 업데이트 · 2026-07-16\n• PC·앱 여러 작품 데이터 이전\n• 가져오기·내보내기 진행 팝업\n• PC 데이터 회차를 안 읽음으로 복원\n• 만화책 한 페이지 넘김·터치 이동·회전 위치 유지" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

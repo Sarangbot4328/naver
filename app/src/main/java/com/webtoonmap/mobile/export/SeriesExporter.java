@@ -6,6 +6,9 @@ import android.net.Uri;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
+import com.webtoonmap.mobile.download.SourceJobStore;
+import com.webtoonmap.mobile.joatoon.JoatoonApi;
+import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import org.json.JSONArray;
@@ -96,12 +99,29 @@ public final class SeriesExporter {
                 String thumbnailExt = writeThumbnail(context, zip, prefix, series.thumbnailPath)
                         ? ".jpg" : null;
                 JSONObject item = new JSONObject();
+                String source = sourceFromTitleId(series.titleId);
+                String transferTitleId = series.titleId;
+                String pageUrl = null;
+                SourceJobStore.Job sourceJob = SourceJobStore.get(context, series.titleId);
+                if (sourceJob != null) {
+                    source = sourceJob.source;
+                    if (sourceJob.remoteId != null && !sourceJob.remoteId.isEmpty()) {
+                        transferTitleId = sourceJob.remoteId;
+                    }
+                    pageUrl = sourceJob.pageUrl(baseUrlFor(context, source));
+                } else if ("joatoon".equals(source) && series.titleId.startsWith("joatoon_")) {
+                    transferTitleId = series.titleId.substring("joatoon_".length());
+                    pageUrl = JoatoonApi.seriesUrl(SourceSettings.getJoatoonUrl(context), transferTitleId);
+                } else if ("naver".equals(source)) {
+                    pageUrl = "https://comic.naver.com/webtoon/list?titleId=" + transferTitleId;
+                }
                 item.put("slug", slug);
                 item.put("title", series.title);
                 item.put("description", series.description);
                 item.put("tags", tagsArray(series.tags));
-                item.put("source", sourceFromTitleId(series.titleId));
-                item.put("title_id", series.titleId);
+                item.put("source", source);
+                item.put("title_id", transferTitleId);
+                item.put("page_url", pageUrl == null ? JSONObject.NULL : pageUrl);
                 item.put("created_at", Instant.now().toString());
                 item.put("last_read_episode", lastRead == null ? JSONObject.NULL : lastRead);
                 item.put("episode_count", episodes.size());
@@ -113,6 +133,7 @@ public final class SeriesExporter {
             JSONObject manifest = new JSONObject();
             manifest.put("format", FORMAT);
             manifest.put("version", VERSION);
+            manifest.put("exporter", "android");
             manifest.put("exported_at", Instant.now().toString());
             manifest.put("webtoon_count", webtoons.length());
             manifest.put("webtoons", webtoons);
@@ -164,6 +185,13 @@ public final class SeriesExporter {
         if (value.startsWith("manhwabang_")) return "manhwabang";
         if (value.startsWith("ililtoon_")) return "ililtoon";
         return "naver";
+    }
+
+    private static String baseUrlFor(Context context, String source) {
+        if (SourceSettings.SOURCE_JOATOON.equals(source)) return SourceSettings.getJoatoonUrl(context);
+        if (SourceSettings.SOURCE_MANHWABANG.equals(source)) return SourceSettings.getManhwabangUrl(context);
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) return SourceSettings.getIliltoonUrl(context);
+        return "https://comic.naver.com";
     }
 
     private static InputStream openPath(Context context, String path) throws Exception {
