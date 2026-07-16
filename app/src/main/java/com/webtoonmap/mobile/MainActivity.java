@@ -78,6 +78,10 @@ public final class MainActivity extends AppCompatActivity {
         tintNavigation();
     }
 
+    public void refreshDownloads() {
+        if (downloadsView != null) downloadsView.refresh();
+    }
+
     private void showNaver() {
         selectedChannel = 0;
         swap(naverView);

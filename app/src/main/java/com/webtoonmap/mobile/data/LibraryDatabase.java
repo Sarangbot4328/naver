@@ -136,6 +136,13 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 new String[]{titleId, String.valueOf(number)});
     }
 
+    public void setEpisodeViewed(String titleId, int number, boolean viewed) {
+        ContentValues v = new ContentValues();
+        v.put("viewed", viewed ? 1 : 0);
+        getWritableDatabase().update("episodes", v, "title_id=? AND episode_no=?",
+                new String[]{titleId, String.valueOf(number)});
+    }
+
     public void deleteSeries(String titleId) {
         getWritableDatabase().delete("series", "title_id=?", new String[]{titleId});
     }

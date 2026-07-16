@@ -1,16 +1,25 @@
 package com.webtoonmap.mobile.ui;
 
+import android.net.Uri;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+
 import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
+import com.webtoonmap.mobile.export.TransferImporter;
 import com.webtoonmap.mobile.storage.SourceSettings;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class SettingsChannelView extends FrameLayout {
     private final MainActivity activity;
@@ -23,6 +32,11 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
+    private final Button importButton;
+    private final TextView importStatus;
+    private final ActivityResultLauncher<String[]> importLauncher;
+    private final ExecutorService importExecutor = Executors.newSingleThreadExecutor();
+    private boolean importing;
     private boolean refreshing;
 
     public SettingsChannelView(MainActivity activity) {
@@ -38,6 +52,12 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
+        importButton = findViewById(R.id.import_transfer);
+        importStatus = findViewById(R.id.import_status);
+        importLauncher = activity.registerForActivityResult(
+                new ActivityResultContracts.OpenDocument(), uri -> {
+                    if (uri != null) importTransfer(uri);
+                });
         sourceGroup.setOnCheckedChangeListener((group, checkedId) -> {
             if (refreshing) return;
             String source = sourceForCheckedId(checkedId);
@@ -60,6 +80,9 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_joatoon_url).setOnClickListener(v -> saveJoatoonUrl());
         findViewById(R.id.save_manhwabang_url).setOnClickListener(v -> saveManhwabangUrl());
         findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
+        importButton.setOnClickListener(v -> {
+            if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
+        });
         refresh();
     }
 
@@ -81,6 +104,44 @@ public final class SettingsChannelView extends FrameLayout {
             version.setText("버전 1.1");
         }
         refreshing = false;
+    }
+
+    private void importTransfer(Uri uri) {
+        if (importing) return;
+        importing = true;
+        importButton.setEnabled(false);
+        importButton.setText("가져오는 중…");
+        importStatus.setText("파일을 확인하는 중…");
+        importExecutor.execute(() -> {
+            try {
+                TransferImporter.Result result = TransferImporter.importArchive(activity, uri,
+                        (current, total, title) -> post(() -> importStatus.setText(
+                                current + "/" + total + " · ‘" + title + "’ 복원 중")));
+                post(() -> {
+                    importing = false;
+                    importButton.setEnabled(true);
+                    importButton.setText("데이터 가져오기");
+                    activity.refreshDownloads();
+                    String summary = "가져오기 완료 · " + result.imported.size() + "개 작품";
+                    if (!result.errors.isEmpty()) {
+                        summary += " · 오류 " + result.errors.size() + "개";
+                        importStatus.setText(summary + "\n" + result.errors.get(0));
+                    } else {
+                        importStatus.setText(summary);
+                    }
+                    Toast.makeText(activity, summary, Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? "가져오기에 실패했습니다." : error.getMessage();
+                post(() -> {
+                    importing = false;
+                    importButton.setEnabled(true);
+                    importButton.setText("데이터 가져오기");
+                    importStatus.setText("가져오기 실패 · " + message);
+                    Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void saveJoatoonUrl() {

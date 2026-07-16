@@ -26,7 +26,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.webtoonmap.mobile.R;
-import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
@@ -96,36 +95,52 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             return;
         }
         CharSequence[] labels = new CharSequence[rows.size()];
+        boolean[] selected = new boolean[rows.size()];
         for (int i = 0; i < rows.size(); i++) {
             SeriesItem item = rows.get(i);
             labels[i] = item.title + "\n" + item.episodeCount + "개 회차";
         }
         new AlertDialog.Builder(getContext())
-                .setTitle("내보낼 웹툰 선택")
-                .setItems(labels, (dialog, which) -> exportSeries(rows.get(which)))
+                .setTitle("내보낼 웹툰 선택 (여러 개 가능)")
+                .setMultiChoiceItems(labels, selected,
+                        (dialog, which, checked) -> selected[which] = checked)
+                .setPositiveButton("내보내기", (dialog, which) -> {
+                    List<SeriesItem> chosen = new ArrayList<>();
+                    for (int i = 0; i < rows.size(); i++) {
+                        if (selected[i]) chosen.add(rows.get(i));
+                    }
+                    if (chosen.isEmpty()) {
+                        Toast.makeText(getContext(), "한 작품 이상 선택해 주세요.",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        exportSeries(chosen);
+                    }
+                })
                 .setNegativeButton("취소", null)
                 .show();
     }
 
-    private void exportSeries(SeriesItem item) {
+    private void exportSeries(List<SeriesItem> items) {
         if (exporting) return;
-        if (SeriesDownloadService.isDownloading(item.titleId) ||
-                SeriesDownloadService.isQueued(getContext(), item.titleId)) {
-            Toast.makeText(getContext(), "다운로드가 끝난 뒤 내보내 주세요.",
-                    Toast.LENGTH_LONG).show();
-            return;
+        for (SeriesItem item : items) {
+            if (SeriesDownloadService.isDownloading(item.titleId) ||
+                    SeriesDownloadService.isQueued(getContext(), item.titleId)) {
+                Toast.makeText(getContext(), "‘" + item.title +
+                                "’ 다운로드가 끝난 뒤 내보내 주세요.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
         }
         exporting = true;
         exportButton.setEnabled(false);
         exportButton.setText("압축 중…");
-        status.setText("‘" + item.title + "’ 내보내기 준비 중…");
+        status.setText(items.size() + "개 작품 내보내기 준비 중…");
         executor.execute(() -> {
             try {
-                List<EpisodeItem> episodes =
-                        LibraryDatabase.get(getContext()).listEpisodes(item.titleId);
-                File file = SeriesExporter.export(getContext(), item, episodes,
+                LibraryDatabase database = LibraryDatabase.get(getContext());
+                File file = SeriesExporter.export(getContext(), items, database,
                         (current, total) -> post(() -> status.setText(
-                                "‘" + item.title + "’ 압축 중 · " + current + "/" + total + "회차")));
+                                items.size() + "개 작품 압축 중 · " + current + "/" + total + "회차")));
                 post(() -> {
                     exporting = false;
                     exportButton.setEnabled(true);

@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 
 public final class IliltoonApi {
     public static final String KEY_PREFIX = "ililtoon_";
+    private static final int MAX_SERIES_PAGES = 100;
 
     public static final class SeriesInfo {
         public final String title, description, thumbnailUrl, tags, pageUrl;
@@ -68,7 +69,8 @@ public final class IliltoonApi {
     }
 
     public static SeriesInfo fetchSeriesInfo(String pageUrl, String cookie) throws Exception {
-        String html = getText(pageUrl, origin(pageUrl), cookie);
+        String firstPageUrl = seriesPageUrl(pageUrl, 1);
+        String html = getText(firstPageUrl, origin(firstPageUrl), cookie);
         String title = stripHtml(tagText(html, "title"))
                 .replaceFirst("(?i)\\s*-\\s*일일툰.*$", "").trim();
         if (title.isEmpty()) title = "일일툰 만화";
@@ -76,10 +78,10 @@ public final class IliltoonApi {
 
         // The site metadata image is sometimes extension-less and returns HTTP 522.
         // Follow the desktop extension and use the first episode banner first.
-        String thumbnail = findElementImage(html, pageUrl,
+        String thumbnail = findElementImage(html, firstPageUrl,
                 "episode-banner|comic-thumb|banner");
         if (thumbnail == null) {
-            thumbnail = absoluteUrl(pageUrl, findMeta(html, "og:image"));
+            thumbnail = absoluteUrl(firstPageUrl, findMeta(html, "og:image"));
         }
 
         LinkedHashSet<String> tags = new LinkedHashSet<>();
@@ -93,10 +95,50 @@ public final class IliltoonApi {
             }
         }
 
+        Map<String, RawEpisode> unique = new LinkedHashMap<>();
+        collectEpisodeButtons(html, firstPageUrl, unique);
+        int pageCount = seriesPageCount(html, firstPageUrl);
+        for (int page = 2; page <= pageCount && page <= MAX_SERIES_PAGES; page++) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("일일툰 회차 목록 수집 중단");
+            }
+            String nextPageUrl = seriesPageUrl(firstPageUrl, page);
+            String nextHtml = getText(nextPageUrl, firstPageUrl, cookie);
+            pageCount = Math.max(pageCount, seriesPageCount(nextHtml, nextPageUrl));
+            collectEpisodeButtons(nextHtml, nextPageUrl, unique);
+        }
+
+        List<RawEpisode> raw = new ArrayList<>(unique.values());
+        Collections.reverse(raw);
+        LinkedHashSet<Integer> usedNumbers = new LinkedHashSet<>();
+        for (RawEpisode episode : raw) {
+            if (episode.number != null) usedNumbers.add(episode.number);
+        }
+        int fallbackNumber = 1;
+        List<EpisodeMeta> episodes = new ArrayList<>();
+        for (RawEpisode episode : raw) {
+            int number;
+            if (episode.number != null) {
+                number = episode.number;
+            } else {
+                while (usedNumbers.contains(fallbackNumber)) fallbackNumber++;
+                number = fallbackNumber++;
+                usedNumbers.add(number);
+            }
+            String episodeTitle = episode.title.length() > 120
+                    ? episode.title.substring(0, 120) : episode.title;
+            episodes.add(new EpisodeMeta(number, episodeTitle, episode.url));
+        }
+        episodes.sort((a, b) -> Integer.compare(a.number, b.number));
+        return new SeriesInfo(title, description, thumbnail, String.join(", ", tags),
+                firstPageUrl, episodes);
+    }
+
+    private static void collectEpisodeButtons(String html, String pageUrl,
+                                               Map<String, RawEpisode> unique) {
         Pattern buttons = Pattern.compile(
                 "(?is)<button\\b(?=[^>]*class=[\\\"'][^\\\"']*episode[^\\\"']*[\\\"'])[^>]*>.*?</button>");
         Matcher button = buttons.matcher(html);
-        Map<String, RawEpisode> unique = new LinkedHashMap<>();
         while (button.find()) {
             String tag = button.group();
             Matcher location = Pattern.compile(
@@ -104,23 +146,54 @@ public final class IliltoonApi {
             if (!location.find()) continue;
             String url = absoluteUrl(pageUrl, location.group(1).replace("&amp;", "&"));
             if (url == null) continue;
-            String text = stripHtml(tag.substring(tag.indexOf('>') + 1).replaceFirst("(?is)</button>.*$", ""));
+            String text = stripHtml(tag.substring(tag.indexOf('>') + 1)
+                    .replaceFirst("(?is)</button>.*$", ""));
             unique.putIfAbsent(url, new RawEpisode(text, url, episodeNumber(text)));
         }
+    }
 
-        List<RawEpisode> raw = new ArrayList<>(unique.values());
-        Collections.reverse(raw);
-        Map<Integer, EpisodeMeta> numbered = new LinkedHashMap<>();
-        for (int i = 0; i < raw.size(); i++) {
-            RawEpisode episode = raw.get(i);
-            int number = episode.number == null ? i + 1 : episode.number;
-            String episodeTitle = episode.title.length() > 120 ? episode.title.substring(0, 120) : episode.title;
-            numbered.putIfAbsent(number, new EpisodeMeta(number, episodeTitle, episode.url));
+    private static int seriesPageCount(String html, String pageUrl) {
+        int maximum = pageNumber(pageUrl);
+        Matcher anchors = Pattern.compile("(?is)<a\\b[^>]*>").matcher(html);
+        while (anchors.find()) {
+            String tag = anchors.group();
+            Matcher className = Pattern.compile(
+                    "(?is)\\bclass\\s*=\\s*[\\\"']([^\\\"']*)[\\\"']").matcher(tag);
+            if (!className.find() ||
+                    !className.group(1).matches("(?is).*(?:pg_page|pg_end).*")) continue;
+            Matcher href = Pattern.compile(
+                    "(?is)\\bhref\\s*=\\s*[\\\"']([^\\\"']+)[\\\"']").matcher(tag);
+            if (!href.find()) continue;
+            String url = absoluteUrl(pageUrl, href.group(1).replace("&amp;", "&"));
+            if (url != null) maximum = Math.max(maximum, pageNumber(url));
         }
-        List<EpisodeMeta> episodes = new ArrayList<>(numbered.values());
-        episodes.sort((a, b) -> Integer.compare(a.number, b.number));
-        return new SeriesInfo(title, description, thumbnail, String.join(", ", tags),
-                pageUrl, episodes);
+        return Math.max(1, Math.min(maximum, MAX_SERIES_PAGES));
+    }
+
+    private static int pageNumber(String pageUrl) {
+        Matcher matcher = Pattern.compile("(?:[?&])page=(\\d+)").matcher(pageUrl);
+        if (!matcher.find()) return 1;
+        try {
+            int value = Integer.parseInt(matcher.group(1));
+            return value > 0 ? value : 1;
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
+    }
+
+    private static String seriesPageUrl(String pageUrl, int page) {
+        String fragment = "";
+        int hash = pageUrl.indexOf('#');
+        if (hash >= 0) {
+            fragment = pageUrl.substring(hash);
+            pageUrl = pageUrl.substring(0, hash);
+        }
+        String cleaned = pageUrl
+                .replaceAll("([?&])page=\\d+&", "$1")
+                .replaceAll("([?&])page=\\d+$", "")
+                .replaceAll("[?&]$", "");
+        if (page <= 1) return cleaned + fragment;
+        return cleaned + (cleaned.contains("?") ? "&" : "?") + "page=" + page + fragment;
     }
 
     public static List<String> fetchEpisodeImages(String episodeUrl, String cookie) throws Exception {
