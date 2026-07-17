@@ -20,6 +20,11 @@ public final class SourceSettings {
     private static final String KEY_MANHWABANG_URL = "manhwabang_url";
     private static final String KEY_ILILTOON_URL = "ililtoon_url";
     private static final String KEY_VIEW_MODE = "view_mode";
+    private static final String KEY_LOW_DATA_MODE = "low_data_mode";
+    private static final String KEY_LOW_DATA_RESTART_MINUTES = "low_data_restart_minutes";
+    public static final int DEFAULT_LOW_DATA_RESTART_MINUTES = 5;
+    private static final int MIN_LOW_DATA_RESTART_MINUTES = 1;
+    private static final int MAX_LOW_DATA_RESTART_MINUTES = 1440;
 
     private SourceSettings() { }
 
@@ -37,6 +42,33 @@ public final class SourceSettings {
         String value = VIEW_MODE_PAGE.equals(mode) ? VIEW_MODE_PAGE : VIEW_MODE_SCROLL;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_VIEW_MODE, value).apply();
+    }
+
+    public static boolean isLowDataMode(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_LOW_DATA_MODE, false);
+    }
+
+    public static void setLowDataMode(Context context, boolean enabled) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_LOW_DATA_MODE, enabled).apply();
+    }
+
+    public static int getLowDataRestartMinutes(Context context) {
+        int value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getInt(KEY_LOW_DATA_RESTART_MINUTES, DEFAULT_LOW_DATA_RESTART_MINUTES);
+        if (value < MIN_LOW_DATA_RESTART_MINUTES || value > MAX_LOW_DATA_RESTART_MINUTES) {
+            return DEFAULT_LOW_DATA_RESTART_MINUTES;
+        }
+        return value;
+    }
+
+    public static boolean setLowDataRestartMinutes(Context context, int minutes) {
+        if (minutes < MIN_LOW_DATA_RESTART_MINUTES ||
+                minutes > MAX_LOW_DATA_RESTART_MINUTES) return false;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(KEY_LOW_DATA_RESTART_MINUTES, minutes).apply();
+        return true;
     }
 
     public static String getSource(Context context) {

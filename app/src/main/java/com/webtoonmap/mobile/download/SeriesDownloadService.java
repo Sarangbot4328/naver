@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.webkit.CookieManager;
 
 import androidx.annotation.Nullable;
@@ -35,6 +36,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -52,10 +55,15 @@ public final class SeriesDownloadService extends Service {
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static volatile String currentTitleId;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService progressWatchdog =
+            Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
+    private final AtomicBoolean stalledRestartRequested = new AtomicBoolean(false);
+    private final AtomicBoolean manualStopRequested = new AtomicBoolean(false);
     private PowerManager.WakeLock wakeLock;
     private volatile Thread workerThread;
     private volatile boolean serviceDestroying;
+    private volatile long lastProgressAtMs;
 
     public static boolean isRunning() { return RUNNING.get(); }
     public static boolean isDownloading(String titleId) {
@@ -90,12 +98,17 @@ public final class SeriesDownloadService extends Service {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
                 CHANNEL_ID, "웹툰 다운로드", NotificationManager.IMPORTANCE_LOW));
+        lastProgressAtMs = SystemClock.elapsedRealtime();
+        progressWatchdog.scheduleWithFixedDelay(
+                this::checkForStalledDownload, 15, 15, TimeUnit.SECONDS);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIFICATION_ID, notification("다운로드 준비 중…", 0, 0));
         String action = intent == null ? ACTION_PROCESS : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            manualStopRequested.set(true);
+            stalledRestartRequested.set(false);
             DownloadQueue.clear(this);
             if (RUNNING.get()) {
                 cancelRequested.set(true);
@@ -134,6 +147,8 @@ public final class SeriesDownloadService extends Service {
                 if (titleId == null) break;
                 currentTitleId = titleId;
                 cancelRequested.set(false);
+                stalledRestartRequested.set(false);
+                markProgress();
                 Thread.interrupted();
                 try {
                     downloadOne(titleId);
@@ -143,7 +158,13 @@ public final class SeriesDownloadService extends Service {
                     Thread.interrupted();
                     if (cancelled) {
                         LibraryDatabase.get(this).setSeriesStatus(titleId, "paused");
-                        broadcast("전체 다운로드 중단됨 · 대기열과 미완성 회차를 정리했습니다.", true, false);
+                        if (stalledRestartRequested.get() && !manualStopRequested.get()) {
+                            broadcast("진행 정체 감지 · 미완성 회차 정리 후 자동 이어받기합니다.",
+                                    false, false);
+                        } else {
+                            broadcast("전체 다운로드 중단됨 · 대기열과 미완성 회차를 정리했습니다.",
+                                    true, false);
+                        }
                     } else {
                         LibraryDatabase.get(this).setSeriesStatus(titleId, "error");
                         String message = e.getMessage() == null ? "다운로드 실패" : e.getMessage();
@@ -152,8 +173,17 @@ public final class SeriesDownloadService extends Service {
                     }
                 } finally {
                     cleanupIncomplete(titleId);
-                    if (!serviceDestroying) DownloadQueue.remove(this, titleId);
+                    boolean restart = stalledRestartRequested.get() &&
+                            SourceSettings.isLowDataMode(this) &&
+                            !manualStopRequested.get() && !serviceDestroying;
+                    if (!restart && !serviceDestroying) DownloadQueue.remove(this, titleId);
                     currentTitleId = null;
+                    if (restart) {
+                        cancelRequested.set(false);
+                        stalledRestartRequested.set(false);
+                        Thread.interrupted();
+                        update("자동 이어받기 재시작 중…", 0, 0);
+                    }
                 }
             }
         } finally {
@@ -574,9 +604,34 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void update(String message, int current, int total) {
+        markProgress();
         getSystemService(NotificationManager.class).notify(
                 NOTIFICATION_ID, notification(message, current, total));
         broadcast(message, false, false);
+    }
+
+    private void markProgress() {
+        lastProgressAtMs = SystemClock.elapsedRealtime();
+    }
+
+    private void checkForStalledDownload() {
+        if (serviceDestroying || manualStopRequested.get() ||
+                !RUNNING.get() || currentTitleId == null) return;
+        if (!SourceSettings.isLowDataMode(this)) {
+            markProgress();
+            return;
+        }
+        long limitMs = TimeUnit.MINUTES.toMillis(
+                SourceSettings.getLowDataRestartMinutes(this));
+        long stalledMs = SystemClock.elapsedRealtime() - lastProgressAtMs;
+        if (stalledMs < limitMs ||
+                !stalledRestartRequested.compareAndSet(false, true)) return;
+
+        cancelRequested.set(true);
+        int minutes = SourceSettings.getLowDataRestartMinutes(this);
+        broadcast("저데이터 모드 · " + minutes +
+                "분간 진행이 없어 자동 이어받기를 준비합니다.", false, false);
+        NetworkRetry.cancel(workerThread);
     }
 
     private android.app.Notification notification(String message, int current, int total) {
@@ -614,6 +669,7 @@ public final class SeriesDownloadService extends Service {
         RUNNING.set(false);
         currentTitleId = null;
         releaseWakeLock();
+        progressWatchdog.shutdownNow();
         executor.shutdownNow();
         super.onDestroy();
     }

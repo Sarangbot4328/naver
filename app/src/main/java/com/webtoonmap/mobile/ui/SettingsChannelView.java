@@ -4,6 +4,7 @@ import android.net.Uri;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.RadioGroup;
@@ -33,6 +34,10 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
+    private final CheckBox lowDataMode;
+    private final View lowDataOptions;
+    private final EditText lowDataMinutes;
+    private final Button saveLowDataMinutes;
     private final Button importButton;
     private final TextView importStatus;
     private final ActivityResultLauncher<String[]> importLauncher;
@@ -53,6 +58,10 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
+        lowDataMode = findViewById(R.id.low_data_mode);
+        lowDataOptions = findViewById(R.id.low_data_options);
+        lowDataMinutes = findViewById(R.id.low_data_minutes);
+        saveLowDataMinutes = findViewById(R.id.save_low_data_minutes);
         importButton = findViewById(R.id.import_transfer);
         importStatus = findViewById(R.id.import_status);
         importLauncher = activity.registerForActivityResult(
@@ -78,6 +87,16 @@ public final class SettingsChannelView extends FrameLayout {
                             : "웹툰 방식(아래로 스크롤)으로 변경했습니다.",
                     Toast.LENGTH_SHORT).show();
         });
+        lowDataMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (refreshing) return;
+            SourceSettings.setLowDataMode(activity, isChecked);
+            updateLowDataControls(isChecked);
+            Toast.makeText(activity, isChecked
+                            ? "저데이터 모드를 켰습니다."
+                            : "저데이터 모드를 껐습니다.",
+                    Toast.LENGTH_SHORT).show();
+        });
+        saveLowDataMinutes.setOnClickListener(v -> saveLowDataMinutes());
         findViewById(R.id.save_joatoon_url).setOnClickListener(v -> saveJoatoonUrl());
         findViewById(R.id.save_manhwabang_url).setOnClickListener(v -> saveManhwabangUrl());
         findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
@@ -97,6 +116,11 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
         manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        boolean lowDataEnabled = SourceSettings.isLowDataMode(activity);
+        lowDataMode.setChecked(lowDataEnabled);
+        lowDataMinutes.setText(String.valueOf(
+                SourceSettings.getLowDataRestartMinutes(activity)));
+        updateLowDataControls(lowDataEnabled);
         try {
             String name = activity.getPackageManager()
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
@@ -105,6 +129,32 @@ public final class SettingsChannelView extends FrameLayout {
             version.setText("버전 1.3");
         }
         refreshing = false;
+    }
+
+    private void saveLowDataMinutes() {
+        String raw = lowDataMinutes.getText().toString().trim();
+        int minutes;
+        try {
+            minutes = Integer.parseInt(raw);
+        } catch (NumberFormatException ignored) {
+            Toast.makeText(activity, "대기 시간을 분 단위 숫자로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!SourceSettings.setLowDataRestartMinutes(activity, minutes)) {
+            Toast.makeText(activity, "대기 시간은 1분부터 1440분 사이로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        lowDataMinutes.setText(String.valueOf(minutes));
+        Toast.makeText(activity, "자동 이어받기 대기 시간을 " + minutes + "분으로 저장했습니다.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateLowDataControls(boolean enabled) {
+        lowDataOptions.setAlpha(enabled ? 1f : 0.45f);
+        lowDataMinutes.setEnabled(enabled);
+        saveLowDataMinutes.setEnabled(enabled);
     }
 
     private void importTransfer(Uri uri) {
