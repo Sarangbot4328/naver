@@ -184,6 +184,7 @@ public final class SeriesExporter {
         if (value.startsWith("joatoon_")) return "joatoon";
         if (value.startsWith("manhwabang_")) return "manhwabang";
         if (value.startsWith("ililtoon_")) return "ililtoon";
+        if (value.startsWith("blacktoon_")) return "blacktoon";
         return "naver";
     }
 
@@ -191,6 +192,7 @@ public final class SeriesExporter {
         if (SourceSettings.SOURCE_JOATOON.equals(source)) return SourceSettings.getJoatoonUrl(context);
         if (SourceSettings.SOURCE_MANHWABANG.equals(source)) return SourceSettings.getManhwabangUrl(context);
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) return SourceSettings.getIliltoonUrl(context);
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return SourceSettings.getBlacktoonUrl(context);
         return "https://comic.naver.com";
     }
 

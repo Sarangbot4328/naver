@@ -318,6 +318,18 @@ public final class NaverChannelView extends FrameLayout {
                 return null;
             }
         }
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) {
+            try {
+                String path = Uri.parse(url).getPath();
+                Matcher matcher = Pattern.compile("^/webtoon/(\\d+)\\.html$",
+                        Pattern.CASE_INSENSITIVE).matcher(path == null ? "" : path);
+                return matcher.find()
+                        ? SourceJobStore.keyFor(SourceSettings.SOURCE_BLACKTOON, matcher.group(1))
+                        : null;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
             try {
                 Uri uri = Uri.parse(url);
@@ -360,6 +372,14 @@ public final class NaverChannelView extends FrameLayout {
                 if (id == null || id.isEmpty()) id = uri.getQueryParameter("stx");
                 SourceJobStore.register(activity, key, source, pageUrl, id,
                         uri.getQueryParameter("bo_table"));
+            } else if (SourceSettings.SOURCE_BLACKTOON.equals(source)) {
+                String path = uri.getPath();
+                Matcher matcher = Pattern.compile("^/webtoon/(\\d+)\\.html$",
+                        Pattern.CASE_INSENSITIVE).matcher(path == null ? "" : path);
+                if (matcher.find()) {
+                    SourceJobStore.register(activity, key, source, pageUrl,
+                            matcher.group(1), null);
+                }
             }
         } catch (Exception ignored) { }
     }

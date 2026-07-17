@@ -20,6 +20,7 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
+import com.webtoonmap.mobile.blacktoon.BlacktoonApi;
 import com.webtoonmap.mobile.ililtoon.IliltoonApi;
 import com.webtoonmap.mobile.manhwabang.ManhwabangApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
@@ -207,6 +208,8 @@ public final class SeriesDownloadService extends Service {
             downloadManhwabang(titleId);
         } else if (IliltoonApi.isSeriesKey(titleId)) {
             downloadIliltoon(titleId);
+        } else if (BlacktoonApi.isSeriesKey(titleId)) {
+            downloadBlacktoon(titleId);
         } else if (JoatoonApi.isSeriesKey(titleId)) {
             downloadJoatoon(titleId);
         } else {
@@ -440,6 +443,37 @@ public final class SeriesDownloadService extends Service {
                     @Override public byte[] downloadBytes(String imageUrl, String referer)
                             throws Exception {
                         return IliltoonApi.downloadBytes(imageUrl, referer, cookie);
+                    }
+                });
+    }
+
+    private void downloadBlacktoon(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        if (job == null) {
+            throw new IllegalStateException("블랙툰 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String baseUrl = SourceSettings.getBlacktoonUrl(this);
+        String seriesId = job.remoteId;
+        if (seriesId == null || seriesId.isEmpty()) {
+            throw new IllegalStateException("블랙툰 작품 번호를 확인하지 못했습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("블랙툰 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        BlacktoonApi.SeriesInfo info = BlacktoonApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        for (BlacktoonApi.EpisodeMeta episode : info.episodes) {
+            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
+        }
+        downloadExternalSeries(titleId, "블랙툰", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
+                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
+                        return BlacktoonApi.fetchEpisodeImages(episodeUrl, cookie);
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer)
+                            throws Exception {
+                        return BlacktoonApi.downloadBytes(imageUrl, referer, cookie);
                     }
                 });
     }

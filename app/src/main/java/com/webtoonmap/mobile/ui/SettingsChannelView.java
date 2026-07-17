@@ -31,9 +31,11 @@ public final class SettingsChannelView extends FrameLayout {
     private final View joatoonAddressBox;
     private final View manhwabangAddressBox;
     private final View ililtoonAddressBox;
+    private final View blacktoonAddressBox;
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
+    private final EditText blacktoonUrl;
     private final CheckBox autoAdvance;
     private final View autoAdvanceOptions;
     private final EditText autoAdvanceSeconds;
@@ -59,9 +61,11 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonAddressBox = findViewById(R.id.joatoon_address_box);
         manhwabangAddressBox = findViewById(R.id.manhwabang_address_box);
         ililtoonAddressBox = findViewById(R.id.ililtoon_address_box);
+        blacktoonAddressBox = findViewById(R.id.blacktoon_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
+        blacktoonUrl = findViewById(R.id.blacktoon_url);
         autoAdvance = findViewById(R.id.auto_advance);
         autoAdvanceOptions = findViewById(R.id.auto_advance_options);
         autoAdvanceSeconds = findViewById(R.id.auto_advance_seconds);
@@ -118,6 +122,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_joatoon_url).setOnClickListener(v -> saveJoatoonUrl());
         findViewById(R.id.save_manhwabang_url).setOnClickListener(v -> saveManhwabangUrl());
         findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
+        findViewById(R.id.save_blacktoon_url).setOnClickListener(v -> saveBlacktoonUrl());
         importButton.setOnClickListener(v -> {
             if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
         });
@@ -134,6 +139,7 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
         manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
         boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
         autoAdvance.setChecked(autoAdvanceEnabled);
         autoAdvanceSeconds.setText(String.valueOf(
@@ -149,7 +155,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("버전 1.4");
+            version.setText("버전 1.5");
         }
         refreshing = false;
     }
@@ -296,6 +302,16 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "일일툰 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
     }
 
+    private void saveBlacktoonUrl() {
+        if (!SourceSettings.setBlacktoonUrl(activity, blacktoonUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "블랙툰 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
     private void invalidUrl() {
         Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
                 Toast.LENGTH_LONG).show();
@@ -305,6 +321,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_joatoon) return SourceSettings.SOURCE_JOATOON;
         if (checkedId == R.id.source_manhwabang) return SourceSettings.SOURCE_MANHWABANG;
         if (checkedId == R.id.source_ililtoon) return SourceSettings.SOURCE_ILILTOON;
+        if (checkedId == R.id.source_blacktoon) return SourceSettings.SOURCE_BLACKTOON;
         return SourceSettings.SOURCE_NAVER;
     }
 
@@ -312,6 +329,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_JOATOON.equals(source)) return R.id.source_joatoon;
         if (SourceSettings.SOURCE_MANHWABANG.equals(source)) return R.id.source_manhwabang;
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) return R.id.source_ililtoon;
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return R.id.source_blacktoon;
         return R.id.source_naver;
     }
 
@@ -319,6 +337,7 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonAddressBox.setVisibility(SourceSettings.SOURCE_JOATOON.equals(source) ? VISIBLE : GONE);
         manhwabangAddressBox.setVisibility(SourceSettings.SOURCE_MANHWABANG.equals(source) ? VISIBLE : GONE);
         ililtoonAddressBox.setVisibility(SourceSettings.SOURCE_ILILTOON.equals(source) ? VISIBLE : GONE);
+        blacktoonAddressBox.setVisibility(SourceSettings.SOURCE_BLACKTOON.equals(source) ? VISIBLE : GONE);
     }
 
 }

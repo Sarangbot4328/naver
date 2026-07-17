@@ -26,6 +26,8 @@
                     android:layout_height="48dp" android:text="만화방" />
                 <RadioButton android:id="@+id/source_ililtoon" android:layout_width="match_parent"
                     android:layout_height="48dp" android:text="일일툰" />
+                <RadioButton android:id="@+id/source_blacktoon" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="블랙툰" />
             </RadioGroup>
             <LinearLayout android:id="@+id/joatoon_address_box" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
@@ -74,6 +76,22 @@
                 <Button android:id="@+id/save_ililtoon_url" android:layout_width="match_parent"
                     android:layout_height="48dp" android:layout_marginTop="8dp"
                     android:text="일일툰 주소 저장" android:textAllCaps="false" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/blacktoon_address_box" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="블랙툰 주소" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp" android:text="주소가 변경되면 새 주소를 입력하고 저장하세요."
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <EditText android:id="@+id/blacktoon_url" android:layout_width="match_parent"
+                    android:layout_height="52dp" android:layout_marginTop="8dp"
+                    android:hint="https://blacktoon416.com" android:inputType="textUri"
+                    android:maxLines="1" android:paddingHorizontal="12dp" />
+                <Button android:id="@+id/save_blacktoon_url" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:layout_marginTop="8dp"
+                    android:text="블랙툰 주소 저장" android:textAllCaps="false" />
             </LinearLayout>
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -177,11 +195,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.4" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.4 업데이트 · 2026-07-17\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기\n• 웹 탐색 메인·뒤로·앞으로 이동 메뉴\n• 삭제 후에도 열람 이력 유지·재다운로드 경고" />
+                android:text="1.5 업데이트 · 2026-07-18\n• 새 웹툰 채널 ‘블랙툰’ 추가 (주소 직접 등록·전체 다운로드)\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>
