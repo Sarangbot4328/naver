@@ -98,6 +98,35 @@
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="자동 넘기기" android:textColor="@color/text_primary"
+                android:textSize="17sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:text="다운로드한 회차를 보는 화면에서만 지정한 간격마다 자동으로 한 번씩 넘깁니다. 뷰어 화면을 빠르게 두 번 터치하면 일시 중단하거나 다시 시작할 수 있습니다."
+                android:textColor="@color/text_secondary" android:textSize="13sp" />
+            <CheckBox android:id="@+id/auto_advance" android:layout_width="match_parent"
+                android:layout_height="48dp" android:layout_marginTop="8dp"
+                android:text="자동 넘기기 사용" />
+            <LinearLayout android:id="@+id/auto_advance_options"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" android:text="넘기기 간격(초)"
+                    android:textColor="@color/text_primary" android:textStyle="bold" />
+                <EditText android:id="@+id/auto_advance_seconds"
+                    android:layout_width="match_parent" android:layout_height="52dp"
+                    android:layout_marginTop="8dp" android:hint="2" android:inputType="number"
+                    android:maxLength="4" android:maxLines="1" android:paddingHorizontal="12dp" />
+                <Button android:id="@+id/save_auto_advance_seconds"
+                    android:layout_width="match_parent" android:layout_height="48dp"
+                    android:layout_marginTop="8dp" android:text="넘기기 간격 저장"
+                    android:textAllCaps="false" />
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:background="@color/surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="저데이터 다운로드" android:textColor="@color/text_primary"
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -152,7 +181,7 @@
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.4 업데이트 · 2026-07-17\n• 저데이터 모드와 정체 시간 설정\n• 멈춘 다운로드 자동 중단·이어받기\n• 웹 탐색 메인·뒤로·앞으로 이동 메뉴\n• 삭제 후에도 열람 이력 유지\n• 본 작품 재다운로드 경고" />
+                android:text="1.4 업데이트 · 2026-07-17\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기\n• 웹 탐색 메인·뒤로·앞으로 이동 메뉴\n• 삭제 후에도 열람 이력 유지·재다운로드 경고" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

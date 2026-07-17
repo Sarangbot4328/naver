@@ -34,6 +34,10 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
+    private final CheckBox autoAdvance;
+    private final View autoAdvanceOptions;
+    private final EditText autoAdvanceSeconds;
+    private final Button saveAutoAdvanceSeconds;
     private final CheckBox lowDataMode;
     private final View lowDataOptions;
     private final EditText lowDataMinutes;
@@ -58,6 +62,10 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
+        autoAdvance = findViewById(R.id.auto_advance);
+        autoAdvanceOptions = findViewById(R.id.auto_advance_options);
+        autoAdvanceSeconds = findViewById(R.id.auto_advance_seconds);
+        saveAutoAdvanceSeconds = findViewById(R.id.save_auto_advance_seconds);
         lowDataMode = findViewById(R.id.low_data_mode);
         lowDataOptions = findViewById(R.id.low_data_options);
         lowDataMinutes = findViewById(R.id.low_data_minutes);
@@ -87,6 +95,16 @@ public final class SettingsChannelView extends FrameLayout {
                             : "웹툰 방식(아래로 스크롤)으로 변경했습니다.",
                     Toast.LENGTH_SHORT).show();
         });
+        autoAdvance.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (refreshing) return;
+            SourceSettings.setAutoAdvanceEnabled(activity, isChecked);
+            updateAutoAdvanceControls(isChecked);
+            Toast.makeText(activity, isChecked
+                            ? "자동 넘기기를 켰습니다."
+                            : "자동 넘기기를 껐습니다.",
+                    Toast.LENGTH_SHORT).show();
+        });
+        saveAutoAdvanceSeconds.setOnClickListener(v -> saveAutoAdvanceSeconds());
         lowDataMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (refreshing) return;
             SourceSettings.setLowDataMode(activity, isChecked);
@@ -116,6 +134,11 @@ public final class SettingsChannelView extends FrameLayout {
         joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
         manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
+        autoAdvance.setChecked(autoAdvanceEnabled);
+        autoAdvanceSeconds.setText(String.valueOf(
+                SourceSettings.getAutoAdvanceSeconds(activity)));
+        updateAutoAdvanceControls(autoAdvanceEnabled);
         boolean lowDataEnabled = SourceSettings.isLowDataMode(activity);
         lowDataMode.setChecked(lowDataEnabled);
         lowDataMinutes.setText(String.valueOf(
@@ -129,6 +152,32 @@ public final class SettingsChannelView extends FrameLayout {
             version.setText("버전 1.4");
         }
         refreshing = false;
+    }
+
+    private void saveAutoAdvanceSeconds() {
+        String raw = autoAdvanceSeconds.getText().toString().trim();
+        int seconds;
+        try {
+            seconds = Integer.parseInt(raw);
+        } catch (NumberFormatException ignored) {
+            Toast.makeText(activity, "넘기기 간격을 초 단위 숫자로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!SourceSettings.setAutoAdvanceSeconds(activity, seconds)) {
+            Toast.makeText(activity, "넘기기 간격은 1초부터 3600초 사이로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        autoAdvanceSeconds.setText(String.valueOf(seconds));
+        Toast.makeText(activity, "자동 넘기기 간격을 " + seconds + "초로 저장했습니다.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateAutoAdvanceControls(boolean enabled) {
+        autoAdvanceOptions.setAlpha(enabled ? 1f : 0.45f);
+        autoAdvanceSeconds.setEnabled(enabled);
+        saveAutoAdvanceSeconds.setEnabled(enabled);
     }
 
     private void saveLowDataMinutes() {

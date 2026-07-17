@@ -25,6 +25,11 @@ public final class SourceSettings {
     public static final int DEFAULT_LOW_DATA_RESTART_MINUTES = 5;
     private static final int MIN_LOW_DATA_RESTART_MINUTES = 1;
     private static final int MAX_LOW_DATA_RESTART_MINUTES = 1440;
+    private static final String KEY_AUTO_ADVANCE = "auto_advance";
+    private static final String KEY_AUTO_ADVANCE_SECONDS = "auto_advance_seconds";
+    public static final int DEFAULT_AUTO_ADVANCE_SECONDS = 2;
+    private static final int MIN_AUTO_ADVANCE_SECONDS = 1;
+    private static final int MAX_AUTO_ADVANCE_SECONDS = 3600;
 
     private SourceSettings() { }
 
@@ -68,6 +73,33 @@ public final class SourceSettings {
                 minutes > MAX_LOW_DATA_RESTART_MINUTES) return false;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(KEY_LOW_DATA_RESTART_MINUTES, minutes).apply();
+        return true;
+    }
+
+    public static boolean isAutoAdvanceEnabled(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_AUTO_ADVANCE, false);
+    }
+
+    public static void setAutoAdvanceEnabled(Context context, boolean enabled) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_AUTO_ADVANCE, enabled).apply();
+    }
+
+    public static int getAutoAdvanceSeconds(Context context) {
+        int value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getInt(KEY_AUTO_ADVANCE_SECONDS, DEFAULT_AUTO_ADVANCE_SECONDS);
+        if (value < MIN_AUTO_ADVANCE_SECONDS || value > MAX_AUTO_ADVANCE_SECONDS) {
+            return DEFAULT_AUTO_ADVANCE_SECONDS;
+        }
+        return value;
+    }
+
+    public static boolean setAutoAdvanceSeconds(Context context, int seconds) {
+        if (seconds < MIN_AUTO_ADVANCE_SECONDS ||
+                seconds > MAX_AUTO_ADVANCE_SECONDS) return false;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(KEY_AUTO_ADVANCE_SECONDS, seconds).apply();
         return true;
     }
 
