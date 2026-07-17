@@ -26,11 +26,13 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.webtoonmap.mobile.R;
+import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
 import com.webtoonmap.mobile.export.SeriesExporter;
+import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import java.io.File;
@@ -294,6 +296,11 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                     .setMessage("‘" + item.title + "’의 썸네일, 모든 회차 ZIP과 작품 정보를 실제 저장소에서 삭제합니다.")
                     .setNegativeButton("취소", null)
                     .setPositiveButton("삭제", (dialog, which) -> executor.execute(() -> {
+                        LibraryDatabase database = LibraryDatabase.get(getContext());
+                        boolean previouslyViewed = false;
+                        for (EpisodeItem episode : database.listEpisodes(item.titleId)) {
+                            if (episode.viewed) { previouslyViewed = true; break; }
+                        }
                         boolean deleted;
                         try {
                             deleted = new WebtoonStorage(getContext(), item.storageUri)
@@ -302,7 +309,8 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                             deleted = false;
                         }
                         if (deleted) {
-                            LibraryDatabase.get(getContext()).deleteSeries(item.titleId);
+                            if (previouslyViewed) ViewedSeriesHistory.record(getContext(), item);
+                            database.deleteSeries(item.titleId);
                             SourceJobStore.remove(getContext(), item.titleId);
                         }
                         final boolean result = deleted;

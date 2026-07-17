@@ -16,6 +16,7 @@ import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.storage.SourceSettings;
+import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import java.io.File;
@@ -122,6 +123,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
                     episodeTransitionPending = false;
+                    ViewedSeriesHistory.record(OfflineViewerActivity.this, series);
                     LibraryDatabase.get(OfflineViewerActivity.this)
                             .markEpisodeViewed(titleId, episode.number);
                     webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html,

@@ -148,11 +148,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.3" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.4" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.3 업데이트 · 2026-07-16\n• PC·앱 여러 작품 데이터 이전\n• 가져오기·내보내기 진행 팝업\n• PC 데이터 회차를 안 읽음으로 복원\n• 만화책 한 페이지 넘김·터치 이동·회전 위치 유지\n• 저데이터 모드 정체 감지·자동 이어받기" />
+                android:text="1.4 업데이트 · 2026-07-17\n• 저데이터 모드와 정체 시간 설정\n• 멈춘 다운로드 자동 중단·이어받기\n• 웹 탐색 메인·뒤로·앞으로 이동 메뉴\n• 삭제 후에도 열람 이력 유지\n• 본 작품 재다운로드 경고" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

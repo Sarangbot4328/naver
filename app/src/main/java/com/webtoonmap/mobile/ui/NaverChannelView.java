@@ -25,11 +25,15 @@ import androidx.core.content.ContextCompat;
 
 import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
+import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
+import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,6 +45,7 @@ public final class NaverChannelView extends FrameLayout {
     private final WebView webView;
     private final ProgressBar progress;
     private final Button downloadButton;
+    private final Button moveButton;
     private final Button stopButton;
     private boolean clearHistoryOnNextPage;
     private boolean receiverRegistered;
@@ -84,7 +89,18 @@ public final class NaverChannelView extends FrameLayout {
         stopButton.setAllCaps(false);
         stopButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(198, 40, 40)));
         stopButton.setVisibility(View.GONE);
-        actions.addView(stopButton, new LinearLayout.LayoutParams(dp(92), dp(52)));
+        actions.addView(stopButton, new LinearLayout.LayoutParams(dp(76), dp(52)));
+
+        moveButton = new Button(activity);
+        moveButton.setText("이동");
+        moveButton.setTextColor(Color.WHITE);
+        moveButton.setTextSize(14);
+        moveButton.setAllCaps(false);
+        moveButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                Color.rgb(69, 90, 100)));
+        LinearLayout.LayoutParams moveParams = new LinearLayout.LayoutParams(dp(76), dp(52));
+        moveParams.setMarginStart(dp(6));
+        actions.addView(moveButton, moveParams);
 
         downloadButton = new Button(activity);
         downloadButton.setText("전체 다운로드");
@@ -93,8 +109,8 @@ public final class NaverChannelView extends FrameLayout {
         downloadButton.setAllCaps(false);
         downloadButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
                 getResources().getColor(R.color.green, activity.getTheme())));
-        LinearLayout.LayoutParams downloadParams = new LinearLayout.LayoutParams(dp(142), dp(52));
-        downloadParams.setMarginStart(dp(8));
+        LinearLayout.LayoutParams downloadParams = new LinearLayout.LayoutParams(dp(132), dp(52));
+        downloadParams.setMarginStart(dp(6));
         actions.addView(downloadButton, downloadParams);
         actions.setElevation(dp(8));
         LayoutParams actionParams = new LayoutParams(LayoutParams.WRAP_CONTENT, dp(52));
@@ -104,6 +120,7 @@ public final class NaverChannelView extends FrameLayout {
 
         configureWebView();
         downloadButton.setOnClickListener(v -> confirmDownload());
+        moveButton.setOnClickListener(v -> showNavigationMenu());
         stopButton.setOnClickListener(v -> stopAllDownloads());
         webView.loadUrl(homeUrl);
     }
@@ -197,6 +214,27 @@ public final class NaverChannelView extends FrameLayout {
             return;
         }
         boolean queueMode = SeriesDownloadService.isRunning();
+        ViewedSeriesHistory.Entry history = ViewedSeriesHistory.get(activity, titleId);
+        if (history != null && LibraryDatabase.get(activity).getSeries(titleId) == null) {
+            String historyTitle = history.title.isEmpty()
+                    ? "이 작품은" : "‘" + history.title + "’ 작품은";
+            String viewedDate = history.viewedAt <= 0 ? "" :
+                    " (" + DateFormat.getDateInstance(DateFormat.MEDIUM)
+                            .format(new Date(history.viewedAt)) + ")";
+            String queueNotice = queueMode
+                    ? "\n\n현재 다른 작품을 받고 있어 대기열에 추가됩니다."
+                    : "";
+            new AlertDialog.Builder(activity)
+                    .setTitle("이전에 본 작품")
+                    .setMessage(historyTitle + " 이전에 다운로드하여 본 기록이 있습니다" +
+                            viewedDate + ". 삭제한 작품일 수 있습니다. 그래도 다시 받을까요?" +
+                            queueNotice)
+                    .setNegativeButton("취소", null)
+                    .setPositiveButton(queueMode ? "대기열" : "다시 받기",
+                            (dialog, which) -> startDownload(titleId, queued, queueMode))
+                    .show();
+            return;
+        }
         new AlertDialog.Builder(activity)
                 .setTitle(queueMode ? "대기열 추가" : (queued ? "다운로드 재개" : "전체 다운로드"))
                 .setMessage(queueMode ?
@@ -205,14 +243,46 @@ public final class NaverChannelView extends FrameLayout {
                                 "현재 작품의 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다." :
                                 "현재 이용 가능한 공개 회차를 모두 저장합니다. 이미 받은 회차는 건너뜁니다."))
                 .setNegativeButton("취소", null)
-                .setPositiveButton(queueMode ? "대기열" : "시작", (dialog, which) -> {
-                    registerSourceJob(titleId, webView.getUrl());
-                    SeriesDownloadService.enqueue(activity, titleId);
-                    Toast.makeText(activity, queueMode ? "대기열에 추가했습니다." :
-                            (queued ? "다운로드를 다시 시작했습니다." : "다운로드를 시작했습니다."),
-                            Toast.LENGTH_SHORT).show();
-                    updateActionButtons();
-                }).show();
+                .setPositiveButton(queueMode ? "대기열" : "시작",
+                        (dialog, which) -> startDownload(titleId, queued, queueMode))
+                .show();
+    }
+
+    private void startDownload(String titleId, boolean queued, boolean queueMode) {
+        registerSourceJob(titleId, webView.getUrl());
+        SeriesDownloadService.enqueue(activity, titleId);
+        Toast.makeText(activity, queueMode ? "대기열에 추가했습니다." :
+                        (queued ? "다운로드를 다시 시작했습니다." : "다운로드를 시작했습니다."),
+                Toast.LENGTH_SHORT).show();
+        updateActionButtons();
+    }
+
+    private void showNavigationMenu() {
+        String[] options = {"메인으로 가기", "뒤로 가기", "앞으로 가기"};
+        new AlertDialog.Builder(activity)
+                .setTitle("페이지 이동")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        webView.stopLoading();
+                        webView.loadUrl(homeUrl);
+                    } else if (which == 1) {
+                        if (webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            Toast.makeText(activity, "뒤로 이동할 페이지가 없습니다.",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    } else if (which == 2) {
+                        if (webView.canGoForward()) {
+                            webView.goForward();
+                        } else {
+                            Toast.makeText(activity, "앞으로 이동할 페이지가 없습니다.",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .setNegativeButton("닫기", null)
+                .show();
     }
 
     private void stopAllDownloads() {
