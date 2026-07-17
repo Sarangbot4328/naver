@@ -177,7 +177,7 @@ public final class BlacktoonApi {
         if (cached != null && origin.equals(cachedImgOrigin)) return cached;
         String domain = DEFAULT_IMG_DOMAIN;
         try {
-            String config = getText(origin + "/data/config.js", referer, cookie);
+            String config = getTextOnce(origin + "/data/config.js", referer, cookie);
             String parsed = firstGroup(config,
                     "(?is)var\\s+img_domain\\s*=\\s*[\\\"']([^\\\"']+)[\\\"']");
             if (!parsed.isEmpty()) domain = parsed;
@@ -224,6 +224,27 @@ public final class BlacktoonApi {
                 conn.disconnect();
             }
         });
+    }
+
+    private static String getTextOnce(String url, String referer, String cookie) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(15000);
+        conn.setInstanceFollowRedirects(true);
+        conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
+        conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,*/*;q=0.8");
+        if (referer != null) conn.setRequestProperty("Referer", referer);
+        if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
+        NetworkRetry.track(conn);
+        try {
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) throw new IOException("블랙툰 설정 응답 오류 " + code);
+            return new String(readAll(conn.getInputStream(), "블랙툰 설정 요청 중단"),
+                    StandardCharsets.UTF_8);
+        } finally {
+            NetworkRetry.release(conn);
+            conn.disconnect();
+        }
     }
 
     private static byte[] readAll(InputStream input, String interruptedMessage) throws Exception {
