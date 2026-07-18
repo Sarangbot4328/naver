@@ -28,6 +28,8 @@
                     android:layout_height="48dp" android:text="일일툰" />
                 <RadioButton android:id="@+id/source_blacktoon" android:layout_width="match_parent"
                     android:layout_height="48dp" android:text="블랙툰" />
+                <RadioButton android:id="@+id/source_wolfdot" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="늑대닷컴" />
             </RadioGroup>
             <LinearLayout android:id="@+id/joatoon_address_box" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
@@ -92,6 +94,22 @@
                 <Button android:id="@+id/save_blacktoon_url" android:layout_width="match_parent"
                     android:layout_height="48dp" android:layout_marginTop="8dp"
                     android:text="블랙툰 주소 저장" android:textAllCaps="false" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/wolfdot_address_box" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="늑대닷컴 주소" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp" android:text="주소가 변경되면 새 주소를 입력하고 저장하세요."
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <EditText android:id="@+id/wolfdot_url" android:layout_width="match_parent"
+                    android:layout_height="52dp" android:layout_marginTop="8dp"
+                    android:hint="https://wfwf421.com" android:inputType="textUri"
+                    android:maxLines="1" android:paddingHorizontal="12dp" />
+                <Button android:id="@+id/save_wolfdot_url" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:layout_marginTop="8dp"
+                    android:text="늑대닷컴 주소 저장" android:textAllCaps="false" />
             </LinearLayout>
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -191,15 +209,32 @@
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="임시 파일 관리" android:textColor="@color/text_primary"
+                android:textSize="17sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:text="내보내기·가져오기·뷰어 캐시와 중단된 다운로드 조각만 삭제합니다. 다운로드가 완료된 웹툰, 회차 ZIP, 썸네일과 작품 정보는 삭제하지 않습니다."
+                android:textColor="@color/text_secondary" android:textSize="13sp" />
+            <Button android:id="@+id/cleanup_temp_files" android:layout_width="match_parent"
+                android:layout_height="50dp" android:layout_marginTop="12dp"
+                android:text="임시 파일 삭제" android:textAllCaps="false" />
+            <TextView android:id="@+id/cleanup_temp_status" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp"
+                android:textColor="@color/text_secondary" android:textSize="12sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:background="@color/surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="앱 정보" android:textColor="@color/text_primary"
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.1" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.3" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.1 업데이트 · 2026-07-18\n• 블랙툰 다운로드가 시작되지 않던 문제 수정\n• 새 웹툰 채널 ‘블랙툰’ 추가 (주소 직접 등록·전체 다운로드)\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기" />
+                android:text="1.5.3 업데이트 · 2026-07-18\n• 새 웹툰 채널 ‘늑대닷컴’ 추가 (주소 직접 등록·전체 다운로드)\n• 블랙툰 다운로드가 시작되지 않던 문제 수정\n• 앱 데이터 교환·다른 만화책 앱용 내보내기와 기기 저장 추가\n• 내보내기 임시 파일 자동 삭제와 수동 정리 기능 추가\n• 새 웹툰 채널 ‘블랙툰’ 추가 (주소 직접 등록·전체 다운로드)\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

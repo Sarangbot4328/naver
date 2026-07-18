@@ -330,6 +330,18 @@ public final class NaverChannelView extends FrameLayout {
                 return null;
             }
         }
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) {
+            try {
+                Uri uri = Uri.parse(url);
+                String path = uri.getPath();
+                String id = uri.getQueryParameter("toon");
+                if (path == null || !path.matches("(?i)^/list/?$") ||
+                        id == null || !id.matches("\\d+")) return null;
+                return SourceJobStore.keyFor(SourceSettings.SOURCE_WOLFDOT, id);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
             try {
                 Uri uri = Uri.parse(url);
@@ -379,6 +391,13 @@ public final class NaverChannelView extends FrameLayout {
                 if (matcher.find()) {
                     SourceJobStore.register(activity, key, source, pageUrl,
                             matcher.group(1), null);
+                }
+            } else if (SourceSettings.SOURCE_WOLFDOT.equals(source)) {
+                String path = uri.getPath();
+                String id = uri.getQueryParameter("toon");
+                if (path != null && path.matches("(?i)^/list/?$") &&
+                        id != null && id.matches("\\d+")) {
+                    SourceJobStore.register(activity, key, source, pageUrl, id, null);
                 }
             }
         } catch (Exception ignored) { }

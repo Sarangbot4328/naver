@@ -10,10 +10,12 @@ public final class SourceSettings {
     public static final String SOURCE_MANHWABANG = "manhwabang";
     public static final String SOURCE_ILILTOON = "ililtoon";
     public static final String SOURCE_BLACKTOON = "blacktoon";
+    public static final String SOURCE_WOLFDOT = "wolfdot";
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
     public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
     public static final String DEFAULT_ILILTOON_URL = "https://11toon148.com";
     public static final String DEFAULT_BLACKTOON_URL = "https://blacktoon416.com";
+    public static final String DEFAULT_WOLFDOT_URL = "https://wfwf421.com";
     public static final String VIEW_MODE_SCROLL = "scroll";
     public static final String VIEW_MODE_PAGE = "page";
     private static final String PREFS = "source_settings";
@@ -22,6 +24,7 @@ public final class SourceSettings {
     private static final String KEY_MANHWABANG_URL = "manhwabang_url";
     private static final String KEY_ILILTOON_URL = "ililtoon_url";
     private static final String KEY_BLACKTOON_URL = "blacktoon_url";
+    private static final String KEY_WOLFDOT_URL = "wolfdot_url";
     private static final String KEY_VIEW_MODE = "view_mode";
     private static final String KEY_LOW_DATA_MODE = "low_data_mode";
     private static final String KEY_LOW_DATA_RESTART_MINUTES = "low_data_restart_minutes";
@@ -156,12 +159,21 @@ public final class SourceSettings {
         return setUrl(context, KEY_BLACKTOON_URL, raw);
     }
 
+    public static String getWolfdotUrl(Context context) {
+        return getUrl(context, KEY_WOLFDOT_URL, DEFAULT_WOLFDOT_URL);
+    }
+
+    public static boolean setWolfdotUrl(Context context, String raw) {
+        return setUrl(context, KEY_WOLFDOT_URL, raw);
+    }
+
     public static String channelLabel(Context context) {
         String source = getSource(context);
         if (SOURCE_JOATOON.equals(source)) return "조아툰";
         if (SOURCE_MANHWABANG.equals(source)) return "만화방";
         if (SOURCE_ILILTOON.equals(source)) return "일일툰";
         if (SOURCE_BLACKTOON.equals(source)) return "블랙툰";
+        if (SOURCE_WOLFDOT.equals(source)) return "늑대닷컴";
         return "네이버 웹툰";
     }
 
@@ -171,6 +183,7 @@ public final class SourceSettings {
         if (SOURCE_MANHWABANG.equals(source)) return getManhwabangUrl(context) + "/webtoon/list?type=def";
         if (SOURCE_ILILTOON.equals(source)) return getIliltoonUrl(context);
         if (SOURCE_BLACKTOON.equals(source)) return getBlacktoonUrl(context);
+        if (SOURCE_WOLFDOT.equals(source)) return getWolfdotUrl(context);
         return "https://comic.naver.com/webtoon";
     }
 
@@ -192,7 +205,7 @@ public final class SourceSettings {
     private static boolean isKnownSource(String source) {
         return SOURCE_NAVER.equals(source) || SOURCE_JOATOON.equals(source) ||
                 SOURCE_MANHWABANG.equals(source) || SOURCE_ILILTOON.equals(source) ||
-                SOURCE_BLACKTOON.equals(source);
+                SOURCE_BLACKTOON.equals(source) || SOURCE_WOLFDOT.equals(source);
     }
 
     public static String normalizeUrl(String raw) {

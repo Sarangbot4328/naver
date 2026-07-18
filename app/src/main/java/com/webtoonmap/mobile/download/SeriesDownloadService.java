@@ -30,6 +30,7 @@ import com.webtoonmap.mobile.network.OptionalImageDownloader;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
+import com.webtoonmap.mobile.wolfdot.WolfdotApi;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -210,6 +211,8 @@ public final class SeriesDownloadService extends Service {
             downloadIliltoon(titleId);
         } else if (BlacktoonApi.isSeriesKey(titleId)) {
             downloadBlacktoon(titleId);
+        } else if (WolfdotApi.isSeriesKey(titleId)) {
+            downloadWolfdot(titleId);
         } else if (JoatoonApi.isSeriesKey(titleId)) {
             downloadJoatoon(titleId);
         } else {
@@ -474,6 +477,37 @@ public final class SeriesDownloadService extends Service {
                     @Override public byte[] downloadBytes(String imageUrl, String referer)
                             throws Exception {
                         return BlacktoonApi.downloadBytes(imageUrl, referer, cookie);
+                    }
+                });
+    }
+
+    private void downloadWolfdot(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        if (job == null) {
+            throw new IllegalStateException("늑대닷컴 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String baseUrl = SourceSettings.getWolfdotUrl(this);
+        String seriesId = job.remoteId;
+        if (seriesId == null || seriesId.isEmpty()) {
+            throw new IllegalStateException("늑대닷컴 작품 번호를 확인하지 못했습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("늑대닷컴 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        WolfdotApi.SeriesInfo info = WolfdotApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        for (WolfdotApi.EpisodeMeta episode : info.episodes) {
+            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
+        }
+        downloadExternalSeries(titleId, "늑대닷컴", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
+                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
+                        return WolfdotApi.fetchEpisodeImages(episodeUrl, cookie);
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer)
+                            throws Exception {
+                        return WolfdotApi.downloadBytes(imageUrl, referer, cookie);
                     }
                 });
     }
