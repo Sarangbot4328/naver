@@ -178,7 +178,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 episodeTransitionPending || isFinishing()) return;
         if (pageMode) {
             webView.evaluateJavascript(
-                    "if(window.turnPage){window.turnPage(1,true);}", null);
+                    "if(window.autoAdvancePage){window.autoAdvancePage();}", null);
         } else if (isWebtoonAtBottom()) {
             requestNextEpisode();
         } else {
@@ -266,8 +266,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>"
                 + "html,body{margin:0;background:#111;height:100%;overflow:hidden}"
                 + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow:visible;will-change:transform}"
-                + ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}"
-                + ".page img{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block;-webkit-user-drag:none;user-select:none}"
+                + ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain}"
+                + ".page img{width:100vw;height:auto;max-width:none;display:block;-webkit-user-drag:none;user-select:none}"
                 + "</style></head><body><div id='pager' class='pager'>");
         for (File image : images) {
             html.append("<div class='page'><img src='").append(image.getName()).append("'></div>");
@@ -283,6 +283,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("function reportPage(){if(window.AndroidViewer&&AndroidViewer.onPageChanged){AndroidViewer.onPageChanged(currentPage);}}")
                 .append("function goToPage(page,animated){currentPage=Math.max(0,Math.min(page,maxPage()));pager.style.transition=animated?'transform 180ms ease-out':'none';pager.style.transform='translate3d('+(-currentPage*window.innerWidth)+'px,0,0)';reportPage();}")
                 .append("function turnPage(direction,animated){if(direction>0&&currentPage>=maxPage()){if(hasNextEpisode&&window.AndroidViewer&&AndroidViewer.onNextEpisodeRequested){AndroidViewer.onNextEpisodeRequested();}else{goToPage(maxPage(),animated);}return;}goToPage(currentPage+direction,animated);}")
+                .append("function autoAdvancePage(){const page=pager.children[currentPage];if(page&&page.scrollTop+page.clientHeight<page.scrollHeight-2){page.scrollBy({top:Math.max(1,page.clientHeight*0.9),behavior:'smooth'});}else{turnPage(1,true);}}")
                 .append("function handleTap(touch){const direction=touch.clientX>=window.innerWidth/2?1:-1;if(!autoAdvanceEnabled){turnPage(direction,true);return;}const now=Date.now();if(now-lastTapAt<=350){if(tapTimer){clearTimeout(tapTimer);tapTimer=null;}lastTapAt=0;if(window.AndroidViewer&&AndroidViewer.onAutoAdvanceToggleRequested){AndroidViewer.onAutoAdvanceToggleRequested();}return;}lastTapAt=now;tapTimer=setTimeout(function(){tapTimer=null;turnPage(direction,true);},350);}")
                 .append("pager.addEventListener('touchstart',function(e){if(e.touches.length!==1||isZoomed()){tracking=false;return;}tracking=true;startX=e.touches[0].clientX;startY=e.touches[0].clientY;},{passive:true});")
                 .append("pager.addEventListener('touchmove',function(e){if(!tracking||e.touches.length!==1){tracking=false;return;}const dx=e.touches[0].clientX-startX;const dy=e.touches[0].clientY-startY;if(Math.abs(dx)>Math.abs(dy)){e.preventDefault();}},{passive:false});")
@@ -294,6 +295,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("window.addEventListener('load',function(){goToPage(currentPage,false);});")
                 .append("window.getCurrentPage=function(){return currentPage;};")
                 .append("window.turnPage=turnPage;")
+                .append("window.autoAdvancePage=autoAdvancePage;")
                 .append("goToPage(currentPage,false);")
                 .append("</script></body></html>");
         return html.toString();
