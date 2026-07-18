@@ -35,11 +35,13 @@ public final class SettingsChannelView extends FrameLayout {
     private final View ililtoonAddressBox;
     private final View blacktoonAddressBox;
     private final View wolfdotAddressBox;
+    private final View hitomiAddressBox;
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
     private final EditText blacktoonUrl;
     private final EditText wolfdotUrl;
+    private final EditText hitomiUrl;
     private final CheckBox autoAdvance;
     private final View autoAdvanceOptions;
     private final EditText autoAdvanceSeconds;
@@ -71,11 +73,13 @@ public final class SettingsChannelView extends FrameLayout {
         ililtoonAddressBox = findViewById(R.id.ililtoon_address_box);
         blacktoonAddressBox = findViewById(R.id.blacktoon_address_box);
         wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
+        hitomiAddressBox = findViewById(R.id.hitomi_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
         blacktoonUrl = findViewById(R.id.blacktoon_url);
         wolfdotUrl = findViewById(R.id.wolfdot_url);
+        hitomiUrl = findViewById(R.id.hitomi_url);
         autoAdvance = findViewById(R.id.auto_advance);
         autoAdvanceOptions = findViewById(R.id.auto_advance_options);
         autoAdvanceSeconds = findViewById(R.id.auto_advance_seconds);
@@ -136,6 +140,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
         findViewById(R.id.save_blacktoon_url).setOnClickListener(v -> saveBlacktoonUrl());
         findViewById(R.id.save_wolfdot_url).setOnClickListener(v -> saveWolfdotUrl());
+        findViewById(R.id.save_hitomi_url).setOnClickListener(v -> saveHitomiUrl());
         importButton.setOnClickListener(v -> {
             if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
         });
@@ -155,6 +160,7 @@ public final class SettingsChannelView extends FrameLayout {
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
         blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
+        hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
         boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
         autoAdvance.setChecked(autoAdvanceEnabled);
         autoAdvanceSeconds.setText(String.valueOf(
@@ -172,7 +178,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("버전 1.5.3");
+            version.setText("버전 1.5.5");
         }
         refreshing = false;
     }
@@ -390,6 +396,16 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "늑대닷컴 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
     }
 
+    private void saveHitomiUrl() {
+        if (!SourceSettings.setHitomiUrl(activity, hitomiUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "히토미 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
     private void invalidUrl() {
         Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
                 Toast.LENGTH_LONG).show();
@@ -401,6 +417,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_ililtoon) return SourceSettings.SOURCE_ILILTOON;
         if (checkedId == R.id.source_blacktoon) return SourceSettings.SOURCE_BLACKTOON;
         if (checkedId == R.id.source_wolfdot) return SourceSettings.SOURCE_WOLFDOT;
+        if (checkedId == R.id.source_hitomi) return SourceSettings.SOURCE_HITOMI;
         return SourceSettings.SOURCE_NAVER;
     }
 
@@ -410,6 +427,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) return R.id.source_ililtoon;
         if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return R.id.source_blacktoon;
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return R.id.source_wolfdot;
+        if (SourceSettings.SOURCE_HITOMI.equals(source)) return R.id.source_hitomi;
         return R.id.source_naver;
     }
 
@@ -419,6 +437,7 @@ public final class SettingsChannelView extends FrameLayout {
         ililtoonAddressBox.setVisibility(SourceSettings.SOURCE_ILILTOON.equals(source) ? VISIBLE : GONE);
         blacktoonAddressBox.setVisibility(SourceSettings.SOURCE_BLACKTOON.equals(source) ? VISIBLE : GONE);
         wolfdotAddressBox.setVisibility(SourceSettings.SOURCE_WOLFDOT.equals(source) ? VISIBLE : GONE);
+        hitomiAddressBox.setVisibility(SourceSettings.SOURCE_HITOMI.equals(source) ? VISIBLE : GONE);
     }
 
 }

@@ -171,7 +171,13 @@ public final class TransferImporter {
                 String kind = parsed.getQueryParameter("bo_table");
                 if (kind == null || kind.isEmpty()) {
                     String path = parsed.getPath();
-                    kind = path != null && path.contains("/manhua/") ? "manhua" : "webtoon";
+                    if ("wolfdot".equals(source)) {
+                        kind = path != null && path.matches("(?i)^/cl/?$")
+                                ? "comic" : "webtoon";
+                    } else {
+                        kind = path != null && path.contains("/manhua/")
+                                ? "manhua" : "webtoon";
+                    }
                 }
                 SourceJobStore.register(context, titleId, source, pageUrl, rawTitleId, kind);
             }

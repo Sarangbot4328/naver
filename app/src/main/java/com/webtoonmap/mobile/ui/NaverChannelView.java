@@ -28,9 +28,11 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
+import com.webtoonmap.mobile.hitomi.HitomiApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
+import com.webtoonmap.mobile.wolfdot.WolfdotApi;
 
 import java.text.DateFormat;
 import java.util.Date;
@@ -335,9 +337,20 @@ public final class NaverChannelView extends FrameLayout {
                 Uri uri = Uri.parse(url);
                 String path = uri.getPath();
                 String id = uri.getQueryParameter("toon");
-                if (path == null || !path.matches("(?i)^/list/?$") ||
-                        id == null || !id.matches("\\d+")) return null;
-                return SourceJobStore.keyFor(SourceSettings.SOURCE_WOLFDOT, id);
+                Matcher matcher = Pattern.compile("^/(list|cl)/?$",
+                        Pattern.CASE_INSENSITIVE).matcher(path == null ? "" : path);
+                if (!matcher.find() || id == null || !id.matches("\\d+")) return null;
+                String identity = matcher.group(1).equalsIgnoreCase("cl")
+                        ? WolfdotApi.KIND_COMIC + ":" + id : id;
+                return SourceJobStore.keyFor(SourceSettings.SOURCE_WOLFDOT, identity);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        if (SourceSettings.SOURCE_HITOMI.equals(source)) {
+            try {
+                String id = hitomiGalleryId(Uri.parse(url));
+                return id == null ? null : HitomiApi.seriesKey(id);
             } catch (Exception ignored) {
                 return null;
             }
@@ -395,12 +408,33 @@ public final class NaverChannelView extends FrameLayout {
             } else if (SourceSettings.SOURCE_WOLFDOT.equals(source)) {
                 String path = uri.getPath();
                 String id = uri.getQueryParameter("toon");
-                if (path != null && path.matches("(?i)^/list/?$") &&
-                        id != null && id.matches("\\d+")) {
-                    SourceJobStore.register(activity, key, source, pageUrl, id, null);
+                Matcher matcher = Pattern.compile("^/(list|cl)/?$",
+                        Pattern.CASE_INSENSITIVE).matcher(path == null ? "" : path);
+                if (matcher.find() && id != null && id.matches("\\d+")) {
+                    String kind = matcher.group(1).equalsIgnoreCase("cl")
+                            ? WolfdotApi.KIND_COMIC : WolfdotApi.KIND_WEBTOON;
+                    SourceJobStore.register(activity, key, source, pageUrl, id, kind);
+                }
+            } else if (SourceSettings.SOURCE_HITOMI.equals(source)) {
+                String id = hitomiGalleryId(uri);
+                if (id != null) {
+                    SourceJobStore.register(activity, key, source, pageUrl, id, "gallery");
                 }
             }
         } catch (Exception ignored) { }
+    }
+
+    private String hitomiGalleryId(Uri uri) {
+        if (uri == null) return null;
+        String path = uri.getPath();
+        if (path == null) return null;
+        Matcher reader = Pattern.compile("^/reader/(\\d+)\\.html$",
+                Pattern.CASE_INSENSITIVE).matcher(path);
+        if (reader.find()) return reader.group(1);
+        Matcher gallery = Pattern.compile(
+                "^/[^/]+/.+-(\\d+)\\.html$",
+                Pattern.CASE_INSENSITIVE).matcher(path);
+        return gallery.find() ? gallery.group(1) : null;
     }
 
     public boolean canGoBack() { return webView.canGoBack(); }

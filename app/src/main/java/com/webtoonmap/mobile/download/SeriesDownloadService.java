@@ -21,6 +21,7 @@ import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.blacktoon.BlacktoonApi;
+import com.webtoonmap.mobile.hitomi.HitomiApi;
 import com.webtoonmap.mobile.ililtoon.IliltoonApi;
 import com.webtoonmap.mobile.manhwabang.ManhwabangApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
@@ -213,6 +214,8 @@ public final class SeriesDownloadService extends Service {
             downloadBlacktoon(titleId);
         } else if (WolfdotApi.isSeriesKey(titleId)) {
             downloadWolfdot(titleId);
+        } else if (HitomiApi.isSeriesKey(titleId)) {
+            downloadHitomi(titleId);
         } else if (JoatoonApi.isSeriesKey(titleId)) {
             downloadJoatoon(titleId);
         } else {
@@ -494,7 +497,7 @@ public final class SeriesDownloadService extends Service {
         String cookie = CookieManager.getInstance().getCookie(baseUrl);
         checkCancelled();
         update("늑대닷컴 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
-        WolfdotApi.SeriesInfo info = WolfdotApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
+        WolfdotApi.SeriesInfo info = WolfdotApi.fetchSeriesInfo(baseUrl, seriesId, job.kind, cookie);
         List<ExternalEpisode> episodes = new java.util.ArrayList<>();
         for (WolfdotApi.EpisodeMeta episode : info.episodes) {
             episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
@@ -508,6 +511,36 @@ public final class SeriesDownloadService extends Service {
                     @Override public byte[] downloadBytes(String imageUrl, String referer)
                             throws Exception {
                         return WolfdotApi.downloadBytes(imageUrl, referer, cookie);
+                    }
+                });
+    }
+
+    private void downloadHitomi(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        String baseUrl = SourceSettings.getHitomiUrl(this);
+        String galleryId = job == null || job.remoteId == null || job.remoteId.isEmpty()
+                ? HitomiApi.remoteId(titleId) : job.remoteId;
+        if (galleryId == null || galleryId.isEmpty()) {
+            throw new IllegalStateException("히토미 갤러리 번호를 확인하지 못했습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        String pageUrl = job == null
+                ? baseUrl + "/reader/" + galleryId + ".html" : job.pageUrl(baseUrl);
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("히토미 갤러리 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        HitomiApi.SeriesInfo info =
+                HitomiApi.fetchSeriesInfo(baseUrl, galleryId, pageUrl, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        episodes.add(new ExternalEpisode(1, "전체", info.pageUrl));
+        downloadExternalSeries(titleId, "히토미", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
+                    @Override public List<String> fetchImages(String episodeUrl) {
+                        return info.imageUrls;
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer)
+                            throws Exception {
+                        return HitomiApi.downloadBytes(imageUrl, referer, cookie);
                     }
                 });
     }

@@ -22,6 +22,8 @@ import java.util.regex.Pattern;
 
 public final class WolfdotApi {
     public static final String KEY_PREFIX = "wolfdot_";
+    public static final String KIND_WEBTOON = "webtoon";
+    public static final String KIND_COMIC = "comic";
     private static final Charset DEFAULT_CHARSET = Charset.forName("EUC-KR");
     private static final int MAX_LIST_PAGES = 100;
 
@@ -59,11 +61,17 @@ public final class WolfdotApi {
 
     public static SeriesInfo fetchSeriesInfo(String baseUrl, String seriesId, String cookie)
             throws Exception {
+        return fetchSeriesInfo(baseUrl, seriesId, KIND_WEBTOON, cookie);
+    }
+
+    public static SeriesInfo fetchSeriesInfo(String baseUrl, String seriesId, String kind,
+                                             String cookie) throws Exception {
         if (seriesId == null || !seriesId.matches("\\d+")) {
             throw new IOException("늑대닷컴 작품 번호가 올바르지 않습니다.");
         }
         String base = trimSlash(baseUrl);
-        String pageUrl = base + "/list?toon=" + seriesId;
+        String pagePath = KIND_COMIC.equals(kind) ? "/cl" : "/list";
+        String pageUrl = base + pagePath + "?toon=" + seriesId;
         String html = getText(pageUrl, base + "/", cookie);
 
         String title = stripHtml(firstGroup(html,
@@ -72,7 +80,7 @@ public final class WolfdotApi {
             title = stripHtml(tagText(html, "title"))
                     .replaceFirst("(?i)\\s*-\\s*늑대닷컴.*$", "").trim();
         }
-        if (title.isEmpty()) title = "늑대닷컴 웹툰";
+        if (title.isEmpty()) title = "늑대닷컴 작품";
 
         String description = stripHtml(firstGroup(html,
                 "(?is)<div\\b[^>]*id=[\\\"']summary[\\\"'][^>]*>(.*?)</div>"));
