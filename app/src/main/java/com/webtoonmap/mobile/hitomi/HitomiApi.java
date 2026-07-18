@@ -135,19 +135,44 @@ public final class HitomiApi {
 
     public static byte[] downloadBytes(String url, String referer, String cookie)
             throws Exception {
-        return NetworkRetry.forever(() -> {
-            HttpURLConnection conn = open(url, referer, cookie, "image/*,*/*;q=0.8");
+        IOException lastError = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            // hitomi.la cookies belong to a different origin and can make the image CDN
+            // reject or stall the request on some Android network stacks.
+            HttpURLConnection conn = open(
+                    url, referer, null, "image/webp,image/*,*/*;q=0.8");
             try {
                 int code = conn.getResponseCode();
                 if (code < 200 || code >= 300) {
                     throw new IOException("히토미 이미지 HTTP " + code);
                 }
                 return readAll(conn.getInputStream(), "히토미 이미지 다운로드 중단");
+            } catch (IOException error) {
+                if (Thread.currentThread().isInterrupted()) {
+                    InterruptedIOException interrupted =
+                            new InterruptedIOException("히토미 이미지 다운로드 중단");
+                    interrupted.initCause(error);
+                    throw interrupted;
+                }
+                lastError = error;
             } finally {
                 NetworkRetry.release(conn);
                 conn.disconnect();
             }
-        });
+
+            if (attempt < 3) {
+                try {
+                    Thread.sleep(2_000L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw interrupted;
+                }
+            }
+        }
+        String detail = lastError == null || lastError.getMessage() == null
+                ? "네트워크 응답 없음" : lastError.getMessage();
+        throw new IOException("히토미 이미지 다운로드 실패(3회 시도): " + detail,
+                lastError);
     }
 
     private static JSONObject galleryJson(String script) throws Exception {
@@ -274,6 +299,9 @@ public final class HitomiApi {
         conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
         conn.setRequestProperty("Accept", accept);
         conn.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8");
+        conn.setRequestProperty("Accept-Encoding", "identity");
+        conn.setRequestProperty("Cache-Control", "no-cache");
+        conn.setRequestProperty("Connection", "close");
         if (referer != null && !referer.isEmpty()) conn.setRequestProperty("Referer", referer);
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
         return NetworkRetry.track(conn);
