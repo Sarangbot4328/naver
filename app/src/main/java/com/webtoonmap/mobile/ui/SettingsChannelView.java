@@ -108,12 +108,16 @@ public final class SettingsChannelView extends FrameLayout {
         viewModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
             if (refreshing) return;
             String mode = checkedId == R.id.view_mode_page
-                    ? SourceSettings.VIEW_MODE_PAGE : SourceSettings.VIEW_MODE_SCROLL;
+                    ? SourceSettings.VIEW_MODE_PAGE
+                    : checkedId == R.id.view_mode_page_fit
+                    ? SourceSettings.VIEW_MODE_PAGE_FIT : SourceSettings.VIEW_MODE_SCROLL;
             SourceSettings.setViewMode(activity, mode);
-            Toast.makeText(activity, checkedId == R.id.view_mode_page
-                            ? "만화책 방식(옆으로 넘김)으로 변경했습니다."
-                            : "웹툰 방식(아래로 스크롤)으로 변경했습니다.",
-                    Toast.LENGTH_SHORT).show();
+            String message = checkedId == R.id.view_mode_page
+                    ? "만화책 모드 2(가로 폭 채우기)로 변경했습니다."
+                    : checkedId == R.id.view_mode_page_fit
+                    ? "만화책 모드 1(한 페이지 전체 보기)로 변경했습니다."
+                    : "웹툰 방식(아래로 스크롤)으로 변경했습니다.";
+            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
         });
         autoAdvance.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (refreshing) return;
@@ -153,8 +157,11 @@ public final class SettingsChannelView extends FrameLayout {
         String source = SourceSettings.getSource(activity);
         sourceGroup.check(checkedIdForSource(source));
         updateAddressVisibility(source);
-        viewModeGroup.check(SourceSettings.isPageMode(activity)
-                ? R.id.view_mode_page : R.id.view_mode_scroll);
+        String viewMode = SourceSettings.getViewMode(activity);
+        viewModeGroup.check(SourceSettings.VIEW_MODE_PAGE.equals(viewMode)
+                ? R.id.view_mode_page
+                : SourceSettings.VIEW_MODE_PAGE_FIT.equals(viewMode)
+                ? R.id.view_mode_page_fit : R.id.view_mode_scroll);
         joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
         manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
@@ -178,7 +185,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("버전 1.5.7");
+            version.setText("버전 1.5.8");
         }
         refreshing = false;
     }

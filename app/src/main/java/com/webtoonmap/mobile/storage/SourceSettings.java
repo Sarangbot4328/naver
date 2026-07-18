@@ -20,6 +20,7 @@ public final class SourceSettings {
     public static final String DEFAULT_HITOMI_URL = "https://hitomi.la";
     public static final String VIEW_MODE_SCROLL = "scroll";
     public static final String VIEW_MODE_PAGE = "page";
+    public static final String VIEW_MODE_PAGE_FIT = "page_fit";
     private static final String PREFS = "source_settings";
     private static final String KEY_SOURCE = "source";
     private static final String KEY_JOATOON_URL = "joatoon_url";
@@ -45,15 +46,24 @@ public final class SourceSettings {
     public static String getViewMode(Context context) {
         String value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_VIEW_MODE, VIEW_MODE_SCROLL);
-        return VIEW_MODE_PAGE.equals(value) ? VIEW_MODE_PAGE : VIEW_MODE_SCROLL;
+        if (VIEW_MODE_PAGE.equals(value)) return VIEW_MODE_PAGE;
+        if (VIEW_MODE_PAGE_FIT.equals(value)) return VIEW_MODE_PAGE_FIT;
+        return VIEW_MODE_SCROLL;
     }
 
     public static boolean isPageMode(Context context) {
+        return !VIEW_MODE_SCROLL.equals(getViewMode(context));
+    }
+
+    public static boolean isPageWidthMode(Context context) {
         return VIEW_MODE_PAGE.equals(getViewMode(context));
     }
 
     public static void setViewMode(Context context, String mode) {
-        String value = VIEW_MODE_PAGE.equals(mode) ? VIEW_MODE_PAGE : VIEW_MODE_SCROLL;
+        String value;
+        if (VIEW_MODE_PAGE.equals(mode)) value = VIEW_MODE_PAGE;
+        else if (VIEW_MODE_PAGE_FIT.equals(mode)) value = VIEW_MODE_PAGE_FIT;
+        else value = VIEW_MODE_SCROLL;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_VIEW_MODE, value).apply();
     }

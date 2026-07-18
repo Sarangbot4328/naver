@@ -47,6 +47,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private Button previous;
     private Button next;
     private boolean pageMode;
+    private boolean pageWidthMode;
     private boolean episodeTransitionPending;
     private boolean autoAdvanceEnabled;
     private boolean autoAdvancePaused;
@@ -93,6 +94,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         next.setOnClickListener(v -> requestNextEpisode());
 
         pageMode = SourceSettings.isPageMode(this);
+        pageWidthMode = SourceSettings.isPageWidthMode(this);
         if (pageMode) {
             getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
                 @Override public void handleOnBackPressed() {
@@ -263,11 +265,15 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     }
 
     private String buildPageHtml(File[] images, boolean hasNext, int initialPage) {
+        String pageStyle = pageWidthMode
+                ? ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain}"
+                + ".page img{width:100vw;height:auto;max-width:none;display:block;-webkit-user-drag:none;user-select:none}"
+                : ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}"
+                + ".page img{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block;-webkit-user-drag:none;user-select:none}";
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>"
                 + "html,body{margin:0;background:#111;height:100%;overflow:hidden}"
                 + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow:visible;will-change:transform}"
-                + ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain}"
-                + ".page img{width:100vw;height:auto;max-width:none;display:block;-webkit-user-drag:none;user-select:none}"
+                + pageStyle
                 + "</style></head><body><div id='pager' class='pager'>");
         for (File image : images) {
             html.append("<div class='page'><img src='").append(image.getName()).append("'></div>");

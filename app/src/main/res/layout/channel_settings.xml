@@ -144,8 +144,10 @@
                 android:orientation="vertical">
                 <RadioButton android:id="@+id/view_mode_scroll" android:layout_width="match_parent"
                     android:layout_height="48dp" android:text="웹툰 방식 (아래로 스크롤)" />
+                <RadioButton android:id="@+id/view_mode_page_fit" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="만화책 모드 1 (한 페이지 전체 보기 · 이전 방식)" />
                 <RadioButton android:id="@+id/view_mode_page" android:layout_width="match_parent"
-                    android:layout_height="48dp" android:text="만화책 방식 (옆으로 넘김)" />
+                    android:layout_height="48dp" android:text="만화책 모드 2 (가로 폭 채우기 · 현재 방식)" />
             </RadioGroup>
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -248,11 +250,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.7" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.8" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.7 업데이트 · 2026-07-18\n• 만화책 보기 화면 가로 폭 맞춤·긴 페이지 세로 이동 지원\n• 히토미 이미지 다운로드 정체 수정·페이지별 진행 표시\n• 새 웹툰 채널 ‘히토미’ 추가 (주소 직접 등록·갤러리 다운로드·썸네일)\n• 늑대닷컴 만화책 카테고리 전체 다운로드·이어받기 지원\n• 새 웹툰 채널 ‘늑대닷컴’ 추가 (주소 직접 등록·전체 다운로드)\n• 블랙툰 다운로드가 시작되지 않던 문제 수정\n• 앱 데이터 교환·다른 만화책 앱용 내보내기와 기기 저장 추가\n• 내보내기 임시 파일 자동 삭제와 수동 정리 기능 추가\n• 새 웹툰 채널 ‘블랙툰’ 추가 (주소 직접 등록·전체 다운로드)\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기" />
+                android:text="1.5.8 업데이트 · 2026-07-18\n• 웹툰·만화책 모드 1(전체 보기)·모드 2(가로 폭 채움) 선택 추가\n• 만화책 보기 화면 가로 폭 맞춤·긴 페이지 세로 이동 지원\n• 히토미 이미지 다운로드 정체 수정·페이지별 진행 표시\n• 새 웹툰 채널 ‘히토미’ 추가 (주소 직접 등록·갤러리 다운로드·썸네일)\n• 늑대닷컴 만화책 카테고리 전체 다운로드·이어받기 지원\n• 새 웹툰 채널 ‘늑대닷컴’ 추가 (주소 직접 등록·전체 다운로드)\n• 블랙툰 다운로드가 시작되지 않던 문제 수정\n• 앱 데이터 교환·다른 만화책 앱용 내보내기와 기기 저장 추가\n• 내보내기 임시 파일 자동 삭제와 수동 정리 기능 추가\n• 새 웹툰 채널 ‘블랙툰’ 추가 (주소 직접 등록·전체 다운로드)\n• 자동 넘기기와 초 단위 간격 설정\n• 만화책 페이지 이동·웹툰 세로 자동 스크롤\n• 마지막 화면에서 다음 회차 자동 이동\n• 빠른 두 번 터치 일시 중단·재개\n• 저데이터 모드와 멈춘 다운로드 자동 이어받기" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>
