@@ -191,7 +191,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("\uBC84\uC804 1.5.9");
+            version.setText("\uBC84\uC804 1.5.10");
         }
         refreshing = false;
     }

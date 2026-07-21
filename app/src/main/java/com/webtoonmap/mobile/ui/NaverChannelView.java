@@ -138,7 +138,12 @@ public final class NaverChannelView extends FrameLayout {
         settings.setLoadsImagesAutomatically(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setBuiltInZoomControls(false);
-        if (!SourceSettings.SOURCE_NAVER.equals(source)) {
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+            String userAgent = WebSettings.getDefaultUserAgent(activity)
+                    .replace("; wv", "")
+                    .replace(" Version/4.0", "");
+            settings.setUserAgentString(userAgent);
+        } else if (!SourceSettings.SOURCE_NAVER.equals(source)) {
             settings.setUserAgentString(JoatoonApi.USER_AGENT);
         }
         CookieManager.getInstance().setAcceptCookie(true);

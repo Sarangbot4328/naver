@@ -219,7 +219,7 @@ public final class SourceSettings {
         if (SOURCE_BLACKTOON.equals(source)) return getBlacktoonUrl(context);
         if (SOURCE_WOLFDOT.equals(source)) return getWolfdotUrl(context);
         if (SOURCE_HITOMI.equals(source)) return getHitomiUrl(context);
-        if (SOURCE_TOONKOR.equals(source)) return getToonkorUrl(context);
+        if (SOURCE_TOONKOR.equals(source)) return getToonkorUrl(context) + "/%EC%9B%B9%ED%88%B0";
         return "https://comic.naver.com/webtoon";
     }
 

@@ -268,11 +268,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.9" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.10" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.9 &#xC5C5;&#xB370;&#xC774;&#xD2B8; &#xB7; 2026-07-21\n&#x2022; &#xC0C8; &#xC6F9;&#xD230; &#xCC44;&#xB110; &#x2018;&#xD230;&#xCF54;&#x2019; &#xCD94;&#xAC00; (&#xBCC0;&#xACBD; &#xAC00;&#xB2A5;&#xD55C; &#xC8FC;&#xC18C;&#xB7;&#xC804;&#xCCB4; &#xB2E4;&#xC6B4;&#xB85C;&#xB4DC;&#xB7;&#xD0DC;&#xADF8; &#xC800;&#xC7A5;)" />
+                android:text="1.5.10 업데이트 · 2026-07-21\n• 툰코 앱 내 접속 오류 수정\n• 새 웹툰 채널 ‘툰코’ 추가 (변경 가능한 주소·전체 다운로드·태그 저장)" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
