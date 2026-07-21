@@ -32,6 +32,7 @@ public final class SourceSettings {
     private static final String KEY_WOLFDOT_URL = "wolfdot_url";
     private static final String KEY_HITOMI_URL = "hitomi_url";
     private static final String KEY_TOONKOR_URL = "toonkor_url";
+    private static final String KEY_COMPATIBILITY_MODE = "compatibility_mode";
     private static final String KEY_VIEW_MODE = "view_mode";
     private static final String KEY_LOW_DATA_MODE = "low_data_mode";
     private static final String KEY_LOW_DATA_RESTART_MINUTES = "low_data_restart_minutes";
@@ -138,6 +139,16 @@ public final class SourceSettings {
         String value = isKnownSource(source) ? source : SOURCE_NAVER;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_SOURCE, value).apply();
+    }
+
+    public static boolean isCompatibilityMode(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_COMPATIBILITY_MODE, false);
+    }
+
+    public static void setCompatibilityMode(Context context, boolean enabled) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_COMPATIBILITY_MODE, enabled).apply();
     }
 
     public static String getJoatoonUrl(Context context) {

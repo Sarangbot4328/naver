@@ -208,6 +208,7 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void downloadOne(String titleId) throws Exception {
+        com.webtoonmap.mobile.network.ConnectionCompatibility.configure(this);
         if (ManhwabangApi.isSeriesKey(titleId)) {
             downloadManhwabang(titleId);
         } else if (IliltoonApi.isSeriesKey(titleId)) {

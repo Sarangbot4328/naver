@@ -231,7 +231,7 @@ public final class BlacktoonApi {
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(15000);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
+        conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,*/*;q=0.8");
         if (referer != null) conn.setRequestProperty("Referer", referer);
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
@@ -267,7 +267,7 @@ public final class BlacktoonApi {
         conn.setConnectTimeout(0);
         conn.setReadTimeout(0);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
+        conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", accept);
         if (referer != null) conn.setRequestProperty("Referer", referer);
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);

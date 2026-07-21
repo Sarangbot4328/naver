@@ -255,7 +255,7 @@ public final class WolfdotApi {
         conn.setConnectTimeout(30_000);
         conn.setReadTimeout(30_000);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
+        conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", accept);
         conn.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8");
         if (referer != null) conn.setRequestProperty("Referer", referer);

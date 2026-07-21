@@ -152,6 +152,21 @@
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="&#xC811;&#xC18D; &#xD638;&#xD658;&#xC131;" android:textColor="@color/text_primary"
+                android:textSize="17sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:text="&#xD55C;&#xAD6D; &#xD68C;&#xC120;&#xC774;&#xB098; &#xC77C;&#xBD80; &#xD734;&#xB300;&#xD3F0;&#xC5D0;&#xC11C; &#xC0AC;&#xC774;&#xD2B8; &#xC811;&#xC18D;&#xC774; &#xB9C9;&#xD790; &#xB54C; &#xC0AC;&#xC6A9;&#xD569;&#xB2C8;&#xB2E4;. &#xC2E4;&#xC81C; WebView UA, &#xC9C1;&#xC811; &#xC8FC;&#xC18C;, &#xC624;&#xB958; &#xC9C4;&#xB2E8;, &#xC678;&#xBD80; &#xBE0C;&#xB77C;&#xC6B0;&#xC800; &#xB300;&#xCCB4;&#xC640; &#xB2E4;&#xC6B4;&#xB85C;&#xB4DC; &#xD5E4;&#xB354; &#xC77C;&#xCE58;&#xB97C; &#xD55C;&#xBC88;&#xC5D0; &#xC801;&#xC6A9;&#xD569;&#xB2C8;&#xB2E4;."
+                android:textColor="@color/text_secondary" android:textSize="13sp" />
+            <CheckBox android:id="@+id/compatibility_mode"
+                android:layout_width="match_parent" android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="&#xD638;&#xD658; &#xC811;&#xC18D; &#xBAA8;&#xB4DC; &#xC0AC;&#xC6A9;" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:background="@color/surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="웹툰 보기 방식" android:textColor="@color/text_primary"
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -268,11 +283,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.10" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.11" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.10 업데이트 · 2026-07-21\n• 툰코 앱 내 접속 오류 수정\n• 새 웹툰 채널 ‘툰코’ 추가 (변경 가능한 주소·전체 다운로드·태그 저장)" />
+                android:text="1.5.11 업데이트 · 2026-07-21\n• 호환 접속 모드 추가 (실제 UA·오류 진단·외부 브라우저·WebView 업데이트 안내)\n• 웹 화면과 다운로드의 UA·쿠키·Referer 일치 및 재시도\n• 툰코 다운로드 No group 1 오류 수정" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"

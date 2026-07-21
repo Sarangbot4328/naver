@@ -44,6 +44,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText wolfdotUrl;
     private final EditText hitomiUrl;
     private final EditText toonkorUrl;
+    private final CheckBox compatibilityMode;
     private final CheckBox autoAdvance;
     private final View autoAdvanceOptions;
     private final EditText autoAdvanceSeconds;
@@ -84,6 +85,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl = findViewById(R.id.wolfdot_url);
         hitomiUrl = findViewById(R.id.hitomi_url);
         toonkorUrl = findViewById(R.id.toonkor_url);
+        compatibilityMode = findViewById(R.id.compatibility_mode);
         autoAdvance = findViewById(R.id.auto_advance);
         autoAdvanceOptions = findViewById(R.id.auto_advance_options);
         autoAdvanceSeconds = findViewById(R.id.auto_advance_seconds);
@@ -122,6 +124,15 @@ public final class SettingsChannelView extends FrameLayout {
                     ? "만화책 모드 1(한 페이지 전체 보기)로 변경했습니다."
                     : "웹툰 방식(아래로 스크롤)으로 변경했습니다.";
             Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+        });
+        compatibilityMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (refreshing) return;
+            SourceSettings.setCompatibilityMode(activity, isChecked);
+            activity.applyChannelSettings();
+            Toast.makeText(activity, isChecked
+                    ? "\uD638\uD658 \uC811\uC18D \uBAA8\uB4DC\uB97C \uCF30\uC2B5\uB2C8\uB2E4."
+                    : "\uD638\uD658 \uC811\uC18D \uBAA8\uB4DC\uB97C \uAEC8\uC2B5\uB2C8\uB2E4.",
+                    Toast.LENGTH_SHORT).show();
         });
         autoAdvance.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (refreshing) return;
@@ -174,6 +185,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
         hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        compatibilityMode.setChecked(SourceSettings.isCompatibilityMode(activity));
         boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
         autoAdvance.setChecked(autoAdvanceEnabled);
         autoAdvanceSeconds.setText(String.valueOf(
@@ -191,7 +203,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("\uBC84\uC804 1.5.10");
+            version.setText("\uBC84\uC804 1.5.11");
         }
         refreshing = false;
     }

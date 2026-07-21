@@ -6,12 +6,16 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.net.Uri;
+import android.net.http.SslError;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.CookieManager;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -29,6 +33,7 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
+import com.webtoonmap.mobile.network.ConnectionCompatibility;
 import com.webtoonmap.mobile.hitomi.HitomiApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
@@ -55,6 +60,7 @@ public final class NaverChannelView extends FrameLayout {
     private boolean clearHistoryOnNextPage;
     private boolean receiverRegistered;
     private boolean stopping;
+    private boolean connectionErrorDialogShowing;
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (intent.getBooleanExtra(SeriesDownloadService.EXTRA_DONE, false)) stopping = false;
@@ -138,11 +144,10 @@ public final class NaverChannelView extends FrameLayout {
         settings.setLoadsImagesAutomatically(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setBuiltInZoomControls(false);
-        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
-            String userAgent = WebSettings.getDefaultUserAgent(activity)
-                    .replace("; wv", "")
-                    .replace(" Version/4.0", "");
-            settings.setUserAgentString(userAgent);
+        ConnectionCompatibility.configure(activity);
+        if (SourceSettings.isCompatibilityMode(activity) ||
+                SourceSettings.SOURCE_TOONKOR.equals(source)) {
+            settings.setUserAgentString(ConnectionCompatibility.webViewUserAgent(activity));
         } else if (!SourceSettings.SOURCE_NAVER.equals(source)) {
             settings.setUserAgentString(JoatoonApi.USER_AGENT);
         }
@@ -188,7 +193,108 @@ public final class NaverChannelView extends FrameLayout {
                 super.doUpdateVisitedHistory(view, url, isReload);
                 updateActionButtons();
             }
+            @Override public void onReceivedError(WebView view, WebResourceRequest request,
+                                                   WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request != null && request.isForMainFrame()) {
+                    showConnectionError(networkErrorName(error.getErrorCode()),
+                            String.valueOf(error.getDescription()),
+                            request.getUrl() == null ? view.getUrl() : request.getUrl().toString());
+                }
+            }
+
+            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                                       WebResourceResponse response) {
+                super.onReceivedHttpError(view, request, response);
+                if (request != null && request.isForMainFrame()) {
+                    int status = response == null ? 0 : response.getStatusCode();
+                    String reason = response == null ? "" : response.getReasonPhrase();
+                    showConnectionError("HTTP " + status, reason,
+                            request.getUrl() == null ? view.getUrl() : request.getUrl().toString());
+                }
+            }
+
+            @Override public void onReceivedSslError(WebView view, SslErrorHandler handler,
+                                                      SslError error) {
+                handler.cancel();
+                String url = error == null ? view.getUrl() : error.getUrl();
+                if (isMainSiteUrl(url)) {
+                    int primary = error == null ? -1 : error.getPrimaryError();
+                    showConnectionError(sslErrorName(primary),
+                            "\uC548\uC804\uC744 \uC704\uD574 SSL \uC624\uB958\uB97C \uBB34\uC2DC\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.", url);
+                }
+            }
         });
+    }
+    private void showConnectionError(String code, String detail, String url) {
+        if (!SourceSettings.isCompatibilityMode(activity) || connectionErrorDialogShowing) return;
+        connectionErrorDialogShowing = true;
+        String target = url == null || url.trim().isEmpty() ? homeUrl : url;
+        String message = "\uC624\uB958: " + code +
+                (detail == null || detail.trim().isEmpty() ? "" : "\n\uC0C1\uC138: " + detail) +
+                "\n\uC8FC\uC18C: " + target +
+                "\nWebView: " + ConnectionCompatibility.webViewVersion();
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
+                .setTitle("\uC0AC\uC774\uD2B8 \uC811\uC18D \uC624\uB958")
+                .setMessage(message)
+                .setNegativeButton("\uB2EB\uAE30", null)
+                .setNeutralButton("\uC678\uBD80 \uBE0C\uB77C\uC6B0\uC800",
+                        (dialog, which) -> openExternalBrowser(target));
+        if (ConnectionCompatibility.isWebViewLikelyOld()) {
+            builder.setPositiveButton("WebView \uC5C5\uB370\uC774\uD2B8",
+                    (dialog, which) -> ConnectionCompatibility.openWebViewUpdate(activity));
+        } else {
+            builder.setPositiveButton("\uB2E4\uC2DC \uC2DC\uB3C4",
+                    (dialog, which) -> webView.reload());
+        }
+        AlertDialog dialog = builder.create();
+        dialog.setOnDismissListener(ignored -> connectionErrorDialogShowing = false);
+        dialog.show();
+    }
+
+    private void openExternalBrowser(String url) {
+        try {
+            activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception error) {
+            Toast.makeText(activity, "\uC678\uBD80 \uBE0C\uB77C\uC6B0\uC800\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String networkErrorName(int code) {
+        if (code == WebViewClient.ERROR_HOST_LOOKUP) return "DNS / ERR_NAME_NOT_RESOLVED";
+        if (code == WebViewClient.ERROR_CONNECT) return "ERR_CONNECTION_FAILED";
+        if (code == WebViewClient.ERROR_TIMEOUT) return "ERR_CONNECTION_TIMED_OUT";
+        if (code == WebViewClient.ERROR_FAILED_SSL_HANDSHAKE) return "ERR_SSL_PROTOCOL_ERROR";
+        if (code == WebViewClient.ERROR_IO) return "ERR_CONNECTION_CLOSED";
+        if (code == WebViewClient.ERROR_AUTHENTICATION) return "ERR_AUTHENTICATION";
+        if (code == WebViewClient.ERROR_PROXY_AUTHENTICATION) return "ERR_PROXY_AUTHENTICATION";
+        return "WebView ERROR " + code;
+    }
+
+    private String sslErrorName(int code) {
+        if (code == SslError.SSL_EXPIRED) return "SSL_EXPIRED";
+        if (code == SslError.SSL_IDMISMATCH) return "SSL_IDMISMATCH";
+        if (code == SslError.SSL_NOTYETVALID) return "SSL_NOTYETVALID";
+        if (code == SslError.SSL_UNTRUSTED) return "SSL_UNTRUSTED";
+        if (code == SslError.SSL_DATE_INVALID) return "SSL_DATE_INVALID";
+        if (code == SslError.SSL_INVALID) return "SSL_INVALID";
+        return "SSL_ERROR " + code;
+    }
+
+    private boolean isMainSiteUrl(String url) {
+        if (url == null) return false;
+        try {
+            String host = Uri.parse(url).getHost();
+            if (host == null) return false;
+            if (SourceSettings.SOURCE_NAVER.equals(source)) {
+                return host.equals("comic.naver.com") || host.endsWith(".naver.com");
+            }
+            return allowedHost != null &&
+                    (host.equalsIgnoreCase(allowedHost) || host.endsWith("." + allowedHost));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void updateActionButtons() {

@@ -227,7 +227,7 @@ public final class ToonkorApi {
         conn.setConnectTimeout(0);
         conn.setReadTimeout(0);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
+        conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", accept);
         conn.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.7,en;q=0.5");
         if (referer != null) conn.setRequestProperty("Referer", referer);
@@ -289,7 +289,8 @@ public final class ToonkorApi {
     private static String firstGroup(String input, String pattern) {
         if (input == null) return "";
         Matcher matcher = Pattern.compile(pattern).matcher(input);
-        return matcher.find() ? matcher.group(1) : "";
+        if (!matcher.find()) return "";
+        return matcher.groupCount() > 0 ? matcher.group(1) : matcher.group();
     }
 
     @SuppressWarnings("deprecation")
