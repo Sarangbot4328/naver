@@ -36,12 +36,14 @@ public final class SettingsChannelView extends FrameLayout {
     private final View blacktoonAddressBox;
     private final View wolfdotAddressBox;
     private final View hitomiAddressBox;
+    private final View toonkorAddressBox;
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
     private final EditText blacktoonUrl;
     private final EditText wolfdotUrl;
     private final EditText hitomiUrl;
+    private final EditText toonkorUrl;
     private final CheckBox autoAdvance;
     private final View autoAdvanceOptions;
     private final EditText autoAdvanceSeconds;
@@ -74,12 +76,14 @@ public final class SettingsChannelView extends FrameLayout {
         blacktoonAddressBox = findViewById(R.id.blacktoon_address_box);
         wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
         hitomiAddressBox = findViewById(R.id.hitomi_address_box);
+        toonkorAddressBox = findViewById(R.id.toonkor_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
         blacktoonUrl = findViewById(R.id.blacktoon_url);
         wolfdotUrl = findViewById(R.id.wolfdot_url);
         hitomiUrl = findViewById(R.id.hitomi_url);
+        toonkorUrl = findViewById(R.id.toonkor_url);
         autoAdvance = findViewById(R.id.auto_advance);
         autoAdvanceOptions = findViewById(R.id.auto_advance_options);
         autoAdvanceSeconds = findViewById(R.id.auto_advance_seconds);
@@ -145,6 +149,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_blacktoon_url).setOnClickListener(v -> saveBlacktoonUrl());
         findViewById(R.id.save_wolfdot_url).setOnClickListener(v -> saveWolfdotUrl());
         findViewById(R.id.save_hitomi_url).setOnClickListener(v -> saveHitomiUrl());
+        findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
         importButton.setOnClickListener(v -> {
             if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
         });
@@ -168,6 +173,7 @@ public final class SettingsChannelView extends FrameLayout {
         blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
         hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
+        toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
         boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
         autoAdvance.setChecked(autoAdvanceEnabled);
         autoAdvanceSeconds.setText(String.valueOf(
@@ -185,7 +191,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("버전 1.5.8");
+            version.setText("\uBC84\uC804 1.5.9");
         }
         refreshing = false;
     }
@@ -413,6 +419,16 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "히토미 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
     }
 
+    private void saveToonkorUrl() {
+        if (!SourceSettings.setToonkorUrl(activity, toonkorUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "\uD230\uCF54 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
+    }
+
     private void invalidUrl() {
         Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
                 Toast.LENGTH_LONG).show();
@@ -425,6 +441,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_blacktoon) return SourceSettings.SOURCE_BLACKTOON;
         if (checkedId == R.id.source_wolfdot) return SourceSettings.SOURCE_WOLFDOT;
         if (checkedId == R.id.source_hitomi) return SourceSettings.SOURCE_HITOMI;
+        if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
         return SourceSettings.SOURCE_NAVER;
     }
 
@@ -435,6 +452,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return R.id.source_blacktoon;
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return R.id.source_wolfdot;
         if (SourceSettings.SOURCE_HITOMI.equals(source)) return R.id.source_hitomi;
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
         return R.id.source_naver;
     }
 
@@ -445,6 +463,7 @@ public final class SettingsChannelView extends FrameLayout {
         blacktoonAddressBox.setVisibility(SourceSettings.SOURCE_BLACKTOON.equals(source) ? VISIBLE : GONE);
         wolfdotAddressBox.setVisibility(SourceSettings.SOURCE_WOLFDOT.equals(source) ? VISIBLE : GONE);
         hitomiAddressBox.setVisibility(SourceSettings.SOURCE_HITOMI.equals(source) ? VISIBLE : GONE);
+        toonkorAddressBox.setVisibility(SourceSettings.SOURCE_TOONKOR.equals(source) ? VISIBLE : GONE);
     }
 
 }

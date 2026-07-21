@@ -9,6 +9,7 @@ import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
+import com.webtoonmap.mobile.toonkor.ToonkorMetadataStore;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -180,6 +181,9 @@ public final class TransferImporter {
                     }
                 }
                 SourceJobStore.register(context, titleId, source, pageUrl, rawTitleId, kind);
+                if ("toonkor".equals(source)) {
+                    ToonkorMetadataStore.put(context, pageUrl, title, description, "", tags);
+                }
             }
             database.upsertSeries(new SeriesItem(titleId, title, description, tags,
                     thumbnailPath, null, "completed", staged.size()));

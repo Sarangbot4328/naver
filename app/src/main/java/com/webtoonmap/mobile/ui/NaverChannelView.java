@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -33,6 +34,8 @@ import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 import com.webtoonmap.mobile.wolfdot.WolfdotApi;
+import com.webtoonmap.mobile.toonkor.ToonkorApi;
+import com.webtoonmap.mobile.toonkor.ToonkorMetadataStore;
 
 import java.text.DateFormat;
 import java.util.Date;
@@ -140,6 +143,9 @@ public final class NaverChannelView extends FrameLayout {
         }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+            webView.addJavascriptInterface(new ToonkorMetadataBridge(), "ToonkorMetadata");
+        }
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onProgressChanged(WebView view, int newProgress) {
@@ -170,6 +176,7 @@ public final class NaverChannelView extends FrameLayout {
                     clearHistoryOnNextPage = false;
                 }
                 updateActionButtons();
+                if (SourceSettings.SOURCE_TOONKOR.equals(source)) collectToonkorMetadata(view);
             }
 
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
@@ -355,6 +362,10 @@ public final class NaverChannelView extends FrameLayout {
                 return null;
             }
         }
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+            String path = ToonkorApi.seriesPath(url);
+            return path == null ? null : SourceJobStore.keyFor(SourceSettings.SOURCE_TOONKOR, path);
+        }
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
             try {
                 Uri uri = Uri.parse(url);
@@ -419,11 +430,51 @@ public final class NaverChannelView extends FrameLayout {
                 String id = hitomiGalleryId(uri);
                 if (id != null) {
                     SourceJobStore.register(activity, key, source, pageUrl, id, "gallery");
+            }
+            } else if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+                String path = ToonkorApi.seriesPath(pageUrl);
+                if (path != null) {
+                    String slug = Uri.decode(path.substring(1));
+                    SourceJobStore.register(activity, key, source, pageUrl, slug, "webtoon");
                 }
             }
         } catch (Exception ignored) { }
     }
 
+
+    private void collectToonkorMetadata(WebView view) {
+        String script = "(function(){" +
+                "function clean(v){return (v||'').replace(/\\s+/g,' ').trim();}" +
+                "function scan(root){" +
+                "var cards=root.querySelectorAll?root.querySelectorAll('.section-item'):[];" +
+                "for(var i=0;i<cards.length;i++){" +
+                "var c=cards[i],a=c.querySelector('a#title[href],a.toon-more[href]');" +
+                "if(!a)continue;" +
+                "var href=a.href||a.getAttribute('href')||'';" +
+                "var title=clean(a.textContent);" +
+                "var d=c.querySelector('.toon-summary');" +
+                "var g=c.querySelector('.toon_gen');" +
+                "var im=c.querySelector('.section-item-photo img,img');" +
+                "var thumb=im?(im.currentSrc||im.getAttribute('src')||im.getAttribute('data-src')||''):'';" +
+                "try{window.ToonkorMetadata.save(href,title,clean(d&&d.textContent),thumb,clean(g&&g.textContent));}catch(e){}" +
+                "}" +
+                "}" +
+                "scan(document);" +
+                "if(!window.__toonkorMetadataObserver&&document.body){" +
+                "window.__toonkorMetadataObserver=new MutationObserver(function(){scan(document);});" +
+                "window.__toonkorMetadataObserver.observe(document.body,{childList:true,subtree:true});" +
+                "}" +
+                "})();";
+        view.evaluateJavascript(script, null);
+    }
+
+    private final class ToonkorMetadataBridge {
+        @JavascriptInterface
+        public void save(String pageUrl, String title, String description,
+                         String thumbnailUrl, String tags) {
+            ToonkorMetadataStore.put(activity, pageUrl, title, description, thumbnailUrl, tags);
+        }
+    }
     private String hitomiGalleryId(Uri uri) {
         if (uri == null) return null;
         String path = uri.getPath();

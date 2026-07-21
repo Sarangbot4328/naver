@@ -288,6 +288,7 @@ public final class SeriesExporter {
         if (value.startsWith("blacktoon_")) return "blacktoon";
         if (value.startsWith("wolfdot_")) return "wolfdot";
         if (value.startsWith("hitomi_")) return "hitomi";
+        if (value.startsWith("toonkor_")) return "toonkor";
         return "naver";
     }
 
@@ -298,6 +299,7 @@ public final class SeriesExporter {
         if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return SourceSettings.getBlacktoonUrl(context);
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return SourceSettings.getWolfdotUrl(context);
         if (SourceSettings.SOURCE_HITOMI.equals(source)) return SourceSettings.getHitomiUrl(context);
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) return SourceSettings.getToonkorUrl(context);
         return "https://comic.naver.com";
     }
 
