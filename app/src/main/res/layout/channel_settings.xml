@@ -283,11 +283,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.11" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.12" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.11 업데이트 · 2026-07-21\n• 호환 접속 모드 추가 (실제 UA·오류 진단·외부 브라우저·WebView 업데이트 안내)\n• 웹 화면과 다운로드의 UA·쿠키·Referer 일치 및 재시도\n• 툰코 다운로드 No group 1 오류 수정" />
+                android:text="1.5.12 업데이트 · 2026-07-22\n• 툰코 이미지 요청 30초 시간 제한 및 유한 재시도\n• 특정 이미지 실패 시 해당 회차 자동 재분석·재다운로드\n• 재시도 실패 시 실제 연결·HTTP 오류 표시" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"

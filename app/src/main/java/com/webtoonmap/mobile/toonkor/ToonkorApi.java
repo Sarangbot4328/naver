@@ -25,6 +25,9 @@ import java.util.regex.Pattern;
 
 public final class ToonkorApi {
     public static final String KEY_PREFIX = "toonkor_";
+    private static final int CONNECT_TIMEOUT_MS = 30_000;
+    private static final int READ_TIMEOUT_MS = 30_000;
+    private static final int REQUEST_ATTEMPTS = 3;
 
     public static final class SeriesInfo {
         public final String title, description, thumbnailUrl, tags, pageUrl;
@@ -176,7 +179,8 @@ public final class ToonkorApi {
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie) throws Exception {
-        return NetworkRetry.forever(() -> downloadOnceWithJpgFallback(url, referer, cookie));
+        return retry(() -> downloadOnceWithJpgFallback(url, referer, cookie),
+                "툰코 이미지 요청");
     }
 
     private static byte[] downloadOnceWithJpgFallback(String url, String referer, String cookie)
@@ -184,6 +188,7 @@ public final class ToonkorApi {
         try {
             return downloadOnce(url, referer, cookie);
         } catch (IOException original) {
+            if (original instanceof InterruptedIOException) throw original;
             String clean = url.replaceFirst("[?#].*$", "");
             if (clean.toLowerCase(Locale.US).endsWith(".jpg")) throw original;
             int dot = clean.lastIndexOf('.');
@@ -206,7 +211,7 @@ public final class ToonkorApi {
     }
 
     private static String getText(String url, String referer, String cookie) throws Exception {
-        return NetworkRetry.forever(() -> {
+        return retry(() -> {
             HttpURLConnection conn = open(url, referer, cookie,
                     "text/html,application/xhtml+xml,*/*;q=0.8");
             try {
@@ -218,14 +223,42 @@ public final class ToonkorApi {
                 NetworkRetry.release(conn);
                 conn.disconnect();
             }
-        });
+        }, "툰코 페이지 요청");
+    }
+    private static <T> T retry(NetworkRetry.Request<T> request, String label)
+            throws Exception {
+        IOException lastError = null;
+        for (int attempt = 1; attempt <= REQUEST_ATTEMPTS; attempt++) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("다운로드 중단");
+            }
+            try {
+                return request.execute();
+            } catch (IOException error) {
+                if (error instanceof InterruptedIOException &&
+                        Thread.currentThread().isInterrupted()) throw error;
+                lastError = error;
+                if (attempt >= REQUEST_ATTEMPTS) break;
+                try {
+                    Thread.sleep(attempt * 3_000L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw interrupted;
+                }
+            }
+        }
+        String reason = lastError == null || lastError.getMessage() == null ||
+                lastError.getMessage().trim().isEmpty()
+                ? "연결 오류" : lastError.getMessage().trim();
+        throw new IOException(label + " " + REQUEST_ATTEMPTS +
+                "회 실패 · " + reason, lastError);
     }
 
     private static HttpURLConnection open(String url, String referer, String cookie, String accept)
             throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(0);
-        conn.setReadTimeout(0);
+        conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        conn.setReadTimeout(READ_TIMEOUT_MS);
         conn.setInstanceFollowRedirects(true);
         conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", accept);

@@ -387,6 +387,14 @@ public final class SeriesDownloadService extends Service {
     private interface ExternalSiteApi {
         List<String> fetchImages(String episodeUrl) throws Exception;
         byte[] downloadBytes(String imageUrl, String referer) throws Exception;
+
+        default int maxEpisodeAttempts() {
+            return 1;
+        }
+
+        default long retryDelayMs(int failedAttempt) {
+            return 0L;
+        }
     }
 
     private static final class ExternalEpisode {
@@ -541,12 +549,24 @@ public final class SeriesDownloadService extends Service {
         downloadExternalSeries(titleId, "\uD230\uCF54", info.title, info.description, info.tags,
                 info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
                     @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        return ToonkorApi.fetchEpisodeImages(episodeUrl, cookie);
+                        String currentCookie = CookieManager.getInstance().getCookie(baseUrl);
+                        if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
+                        return ToonkorApi.fetchEpisodeImages(episodeUrl, currentCookie);
                     }
 
                     @Override public byte[] downloadBytes(String imageUrl, String referer)
                             throws Exception {
-                        return ToonkorApi.downloadBytes(imageUrl, referer, cookie);
+                        String currentCookie = CookieManager.getInstance().getCookie(baseUrl);
+                        if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
+                        return ToonkorApi.downloadBytes(imageUrl, referer, currentCookie);
+                    }
+
+                    @Override public int maxEpisodeAttempts() {
+                        return 4;
+                    }
+
+                    @Override public long retryDelayMs(int failedAttempt) {
+                        return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
                     }
                 });
     }
@@ -618,15 +638,11 @@ public final class SeriesDownloadService extends Service {
             }
 
             String label = current + "/" + episodes.size() + "화 · " + episode.title;
-            update(label + " 분석 중", current - 1, episodes.size());
-            List<String> images = api.fetchImages(episode.url);
-            checkCancelled();
-            if (images.isEmpty()) {
-                throw new IllegalStateException(episode.number + "화 이미지를 찾지 못했습니다.");
-            }
-            File tempZip = newEpisodeTempZip(titleId, episode.number);
-            int saved = 0;
-            try {
+            int maxAttempts = Math.max(1, api.maxEpisodeAttempts());
+            int saved = downloadExternalEpisodeWithRetry(
+                    titleId, episode, label, current, episodes.size(),
+                    storage, api, maxAttempts);
+            /* Replaced by downloadExternalEpisodeWithRetry.
                 try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(tempZip))) {
                     for (int i = 0; i < images.size(); i++) {
                         checkCancelled();
@@ -656,6 +672,7 @@ public final class SeriesDownloadService extends Service {
             } finally {
                 tempZip.delete();
             }
+            */
             checkCancelled();
             db.upsertEpisode(new EpisodeItem(
                     titleId, episode.number, episode.title, saved, false));
@@ -665,6 +682,100 @@ public final class SeriesDownloadService extends Service {
         db.setSeriesStatus(titleId, "complete");
         update("완료 · " + episodes.size() + "개 회차", episodes.size(), episodes.size());
         broadcast(sourceName + " 다운로드 완료", true, false);
+    }
+    private int downloadExternalEpisodeWithRetry(
+            String titleId, ExternalEpisode episode, String label,
+            int current, int total, WebtoonStorage storage,
+            ExternalSiteApi api, int maxAttempts) throws Exception {
+        Exception lastError = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            checkCancelled();
+            if (attempt > 1) {
+                long delayMs = Math.max(0L, api.retryDelayMs(attempt - 1));
+                update(label + " · " + attempt + "/" + maxAttempts +
+                                "회 자동 재시작 대기",
+                        current - 1, total);
+                if (delayMs > 0L) {
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw interrupted;
+                    }
+                }
+                checkCancelled();
+            }
+
+            File tempZip = null;
+            int saved = 0;
+            try {
+                update(label + (attempt > 1 ? " 재분석 중" : " 분석 중"),
+                        current - 1, total);
+                List<String> images = api.fetchImages(episode.url);
+                checkCancelled();
+                if (images.isEmpty()) {
+                    throw new IllegalStateException(
+                            episode.number + "화 이미지를 찾지 못했습니다.");
+                }
+
+                tempZip = newEpisodeTempZip(titleId, episode.number);
+                try (ZipOutputStream zip =
+                             new ZipOutputStream(new FileOutputStream(tempZip))) {
+                    for (int i = 0; i < images.size(); i++) {
+                        checkCancelled();
+                        String imageUrl = images.get(i);
+                        update(label + " · " + (i + 1) + "/" + images.size() +
+                                        "장 다운로드 중",
+                                current - 1, total);
+                        byte[] bytes = api.downloadBytes(imageUrl, episode.url);
+                        checkCancelled();
+                        String entryName = String.format(Locale.US, "%03d", i + 1) +
+                                imageExtension(imageUrl);
+                        zip.putNextEntry(new ZipEntry(entryName));
+                        zip.write(bytes);
+                        zip.closeEntry();
+                        saved++;
+                        if ((i + 1) % 5 == 0 || i + 1 == images.size()) {
+                            update(label + " · " + (i + 1) + "/" + images.size() +
+                                            "장 압축",
+                                    current - 1, total);
+                        }
+                    }
+                }
+                checkCancelled();
+                if (saved == 0) {
+                    throw new IllegalStateException(episode.number + "화 저장 실패");
+                }
+                storage.writeEpisodeZip(titleId, episode.number, tempZip);
+                return saved;
+            } catch (Exception error) {
+                lastError = error;
+                boolean cancelled = cancelRequested.get() ||
+                        Thread.currentThread().isInterrupted() ||
+                        error instanceof InterruptedException ||
+                        error instanceof java.io.InterruptedIOException;
+                if (cancelled) throw error;
+                if (attempt < maxAttempts) {
+                    update(label + " · " + downloadErrorMessage(error) +
+                                    " · 회차 자동 복구 예정 (" + attempt + "/" +
+                                    maxAttempts + "회 실패)",
+                            current - 1, total);
+                }
+            } finally {
+                if (tempZip != null) tempZip.delete();
+            }
+        }
+
+        if (maxAttempts == 1 && lastError != null) throw lastError;
+        throw new java.io.IOException(episode.number + "화 자동 복구 " + maxAttempts +
+                "회 실패 · " + downloadErrorMessage(lastError), lastError);
+    }
+
+    private static String downloadErrorMessage(Throwable error) {
+        if (error == null) return "알 수 없는 연결 오류";
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty()
+                ? error.getClass().getSimpleName() : message.trim();
     }
 
     private File newEpisodeTempZip(String titleId, int episodeNumber) {
