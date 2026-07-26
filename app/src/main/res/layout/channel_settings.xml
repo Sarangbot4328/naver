@@ -34,7 +34,30 @@
                     android:layout_height="48dp" android:text="히토미" />
                 <RadioButton android:id="@+id/source_toonkor" android:layout_width="match_parent"
                     android:layout_height="48dp" android:text="&#xD230;&#xCF54;" />
+                <RadioButton android:id="@+id/source_server" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:text="서버 연결" />
             </RadioGroup>
+            <LinearLayout android:id="@+id/server_address_box" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="서버 주소 (선택)" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="같은 Wi-Fi에서 자동으로 찾습니다. 자동 연결이 안 되면 서버 화면에 보이는 IP를 입력하세요. 예: 192.168.0.10 또는 192.168.0.10:17891"
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <EditText android:id="@+id/server_url" android:layout_width="match_parent"
+                    android:layout_height="52dp" android:layout_marginTop="8dp"
+                    android:hint="192.168.0.10:17891" android:inputType="textUri"
+                    android:maxLines="1" android:paddingHorizontal="12dp" />
+                <Button android:id="@+id/save_server_url" android:layout_width="match_parent"
+                    android:layout_height="48dp" android:layout_marginTop="8dp"
+                    android:text="서버 주소 저장·연결" android:textAllCaps="false" />
+                <TextView android:id="@+id/server_connection_status"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
             <LinearLayout android:id="@+id/joatoon_address_box" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
                 android:orientation="vertical">
@@ -283,11 +306,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.12" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.13" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.12 업데이트 · 2026-07-22\n• 툰코 이미지 요청 30초 시간 제한 및 유한 재시도\n• 특정 이미지 실패 시 해당 회차 자동 재분석·재다운로드\n• 재시도 실패 시 실제 연결·HTTP 오류 표시" />
+                android:text="1.5.13 업데이트 · 2026-07-26\n• 같은 Wi-Fi LAN 서버 연결·서버에 올리기·서버에서 가져오기\n• 설정 채널 목록에 ‘서버 연결’ 추가\n• 자동 서버 검색 및 수동 IP 입력\n\n1.5.12 업데이트 · 2026-07-22\n• 툰코 이미지 요청 30초 시간 제한 및 유한 재시도\n• 특정 이미지 실패 시 해당 회차 자동 재분석·재다운로드\n• 재시도 실패 시 실제 연결·HTTP 오류 표시" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"

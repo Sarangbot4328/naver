@@ -64,7 +64,19 @@ public final class TransferImporter {
             if (in == null) throw new IOException("선택한 파일을 열 수 없습니다.");
             copy(in, out);
         }
+        try {
+            return importArchiveFile(context, archive, progress);
+        } finally {
+            archive.delete();
+        }
+    }
 
+    /** Import a local .wtoon.zip file. Deletes the file when finished. */
+    public static Result importArchiveFile(Context context, File archive, Progress progress)
+            throws Exception {
+        if (archive == null || !archive.isFile()) {
+            throw new IOException("가져올 파일이 없습니다.");
+        }
         List<String> imported = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         try (ZipFile zip = new ZipFile(archive)) {

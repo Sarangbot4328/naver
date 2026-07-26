@@ -13,6 +13,7 @@ public final class SourceSettings {
     public static final String SOURCE_WOLFDOT = "wolfdot";
     public static final String SOURCE_HITOMI = "hitomi";
     public static final String SOURCE_TOONKOR = "toonkor";
+    public static final String SOURCE_SERVER = "server";
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
     public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
     public static final String DEFAULT_ILILTOON_URL = "https://11toon148.com";
@@ -135,6 +136,10 @@ public final class SourceSettings {
         return SOURCE_JOATOON.equals(getSource(context));
     }
 
+    public static boolean isServer(Context context) {
+        return SOURCE_SERVER.equals(getSource(context));
+    }
+
     public static void setSource(Context context, String source) {
         String value = isKnownSource(source) ? source : SOURCE_NAVER;
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -212,6 +217,7 @@ public final class SourceSettings {
 
     public static String channelLabel(Context context) {
         String source = getSource(context);
+        if (SOURCE_SERVER.equals(source)) return "서버";
         if (SOURCE_JOATOON.equals(source)) return "조아툰";
         if (SOURCE_MANHWABANG.equals(source)) return "만화방";
         if (SOURCE_ILILTOON.equals(source)) return "일일툰";
@@ -224,6 +230,7 @@ public final class SourceSettings {
 
     public static String homeUrl(Context context) {
         String source = getSource(context);
+        if (SOURCE_SERVER.equals(source)) return "about:blank";
         if (SOURCE_JOATOON.equals(source)) return getJoatoonUrl(context);
         if (SOURCE_MANHWABANG.equals(source)) return getManhwabangUrl(context) + "/webtoon/list?type=def";
         if (SOURCE_ILILTOON.equals(source)) return getIliltoonUrl(context);
@@ -253,7 +260,8 @@ public final class SourceSettings {
         return SOURCE_NAVER.equals(source) || SOURCE_JOATOON.equals(source) ||
                 SOURCE_MANHWABANG.equals(source) || SOURCE_ILILTOON.equals(source) ||
                 SOURCE_BLACKTOON.equals(source) || SOURCE_WOLFDOT.equals(source) ||
-                SOURCE_HITOMI.equals(source) || SOURCE_TOONKOR.equals(source);
+                SOURCE_HITOMI.equals(source) || SOURCE_TOONKOR.equals(source) ||
+                SOURCE_SERVER.equals(source);
     }
 
     public static String normalizeUrl(String raw) {

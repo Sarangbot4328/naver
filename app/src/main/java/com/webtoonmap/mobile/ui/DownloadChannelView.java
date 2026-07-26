@@ -35,6 +35,9 @@ import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
 import com.webtoonmap.mobile.export.SeriesExporter;
+import com.webtoonmap.mobile.server.LanServerClient;
+import com.webtoonmap.mobile.server.LanServerConnector;
+import com.webtoonmap.mobile.server.LanServerItem;
 import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
@@ -117,13 +120,19 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                 .setTitle("내보내기 방식 선택")
                 .setItems(new CharSequence[]{
                         "앱 데이터 교환\n웹툰여지도 앱·PC판에서 가져오는 전용 형식",
-                        "다른 만화책 앱용\n작품명 폴더 안에 회차별 ZIP 저장"
-                }, (dialog, which) -> chooseSeries(which == 1))
+                        "다른 만화책 앱용\n작품명 폴더 안에 회차별 ZIP 저장",
+                        "서버에 올리기\n같은 Wi-Fi의 웹툰여지도 서버로 업로드"
+                }, (dialog, which) -> {
+                    if (which == 0) chooseSeries(0);
+                    else if (which == 1) chooseSeries(1);
+                    else chooseSeries(2);
+                })
                 .setNegativeButton("취소", null)
                 .show();
     }
 
-    private void chooseSeries(boolean viewerMode) {
+    /** mode: 0=transfer, 1=viewer, 2=server upload */
+    private void chooseSeries(int mode) {
         if (exporting) return;
         List<SeriesItem> rows = adapter.snapshot();
         if (rows.isEmpty()) {
@@ -136,12 +145,15 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             SeriesItem item = rows.get(i);
             labels[i] = item.title + "\n" + item.episodeCount + "개 회차";
         }
+        String title = mode == 1 ? "다른 만화책 앱용 작품 선택"
+                : mode == 2 ? "서버에 올릴 작품 선택"
+                : "앱 데이터 교환용 작품 선택";
+        String positive = mode == 2 ? "서버에 올리기" : "내보내기";
         new AlertDialog.Builder(getContext())
-                .setTitle(viewerMode ? "다른 만화책 앱용 작품 선택" :
-                        "앱 데이터 교환용 작품 선택")
+                .setTitle(title)
                 .setMultiChoiceItems(labels, selected,
                         (dialog, which, checked) -> selected[which] = checked)
-                .setPositiveButton("내보내기", (dialog, which) -> {
+                .setPositiveButton(positive, (dialog, which) -> {
                     List<SeriesItem> chosen = new ArrayList<>();
                     for (int i = 0; i < rows.size(); i++) {
                         if (selected[i]) chosen.add(rows.get(i));
@@ -149,14 +161,99 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                     if (chosen.isEmpty()) {
                         Toast.makeText(getContext(), "한 작품 이상 선택해 주세요.",
                                 Toast.LENGTH_SHORT).show();
-                    } else if (viewerMode) {
+                    } else if (mode == 1) {
                         requestViewerFolder(chosen);
+                    } else if (mode == 2) {
+                        exportToServer(chosen);
                     } else {
                         exportSeries(chosen);
                     }
                 })
                 .setNegativeButton("취소", null)
                 .show();
+    }
+
+    private void exportToServer(List<SeriesItem> items) {
+        if (exporting) return;
+        for (SeriesItem item : items) {
+            if (SeriesDownloadService.isDownloading(item.titleId) ||
+                    SeriesDownloadService.isQueued(getContext(), item.titleId)) {
+                Toast.makeText(getContext(), "‘" + item.title +
+                                "’ 다운로드가 끝난 뒤 내보내 주세요.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+        }
+        exporting = true;
+        exportButton.setEnabled(false);
+        exportButton.setText("서버 연결 중…");
+        status.setText("서버를 찾는 중…");
+        AlertDialog progressDialog = new AlertDialog.Builder(getContext())
+                .setTitle("서버에 올리기")
+                .setMessage("서버를 찾는 중…")
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+        executor.execute(() -> {
+            File file = null;
+            try {
+                LanServerConnector.Connection connection =
+                        LanServerConnector.connect(getContext());
+                if (connection == null) {
+                    throw new java.io.IOException("서버가 연결되지 않았습니다");
+                }
+                post(() -> {
+                    exportButton.setText("압축 중…");
+                    status.setText("서버 연결됨 · 압축 중…");
+                    progressDialog.setMessage("작품 패키지를 만드는 중…");
+                });
+                LibraryDatabase database = LibraryDatabase.get(getContext());
+                file = SeriesExporter.export(getContext(), items, database,
+                        (current, total) -> post(() -> {
+                            String text = items.size() + "개 작품 압축 중 · " + current + "/" + total + "회차";
+                            status.setText(text);
+                            progressDialog.setMessage(text);
+                        }));
+                final File uploadFile = file;
+                post(() -> {
+                    exportButton.setText("업로드 중…");
+                    status.setText("서버로 업로드 중…");
+                    progressDialog.setMessage("서버로 업로드 중…");
+                });
+                LanServerItem uploaded = LanServerClient.upload(getContext(), connection.baseUrl,
+                        uploadFile, (sent, total) -> post(() -> {
+                            String text = "업로드 중…\n" + LanServerClient.percent(sent, total);
+                            status.setText(text.replace('\n', ' '));
+                            progressDialog.setMessage(text);
+                        }));
+                post(() -> {
+                    progressDialog.dismiss();
+                    finishExportUi("서버 업로드 완료 · " + uploaded.title);
+                    new AlertDialog.Builder(getContext())
+                            .setTitle("서버 업로드 완료")
+                            .setMessage("‘" + uploaded.title + "’ 패키지를 서버에 올렸습니다.\n" +
+                                    connection.host + ":" + connection.port + "\n\n" +
+                                    "다른 기기에서 설정 → 서버 연결 후 받을 수 있습니다.")
+                            .setPositiveButton("확인", null)
+                            .show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null
+                        ? "서버 업로드에 실패했습니다." : error.getMessage();
+                post(() -> {
+                    progressDialog.dismiss();
+                    finishExportUi("서버 업로드 실패");
+                    new AlertDialog.Builder(getContext())
+                            .setTitle("서버 업로드 실패")
+                            .setMessage(message)
+                            .setPositiveButton("확인", null)
+                            .show();
+                    Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+                });
+            } finally {
+                if (file != null) deleteExportFile(file);
+            }
+        });
     }
 
     private void exportSeries(List<SeriesItem> items) {

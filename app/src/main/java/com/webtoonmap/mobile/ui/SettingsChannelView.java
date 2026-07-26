@@ -19,6 +19,8 @@ import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.export.TransferImporter;
+import com.webtoonmap.mobile.server.LanServerConnector;
+import com.webtoonmap.mobile.server.LanServerSettings;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
@@ -37,6 +39,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final View wolfdotAddressBox;
     private final View hitomiAddressBox;
     private final View toonkorAddressBox;
+    private final View serverAddressBox;
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
@@ -44,6 +47,8 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText wolfdotUrl;
     private final EditText hitomiUrl;
     private final EditText toonkorUrl;
+    private final EditText serverUrl;
+    private final TextView serverConnectionStatus;
     private final CheckBox compatibilityMode;
     private final CheckBox autoAdvance;
     private final View autoAdvanceOptions;
@@ -60,9 +65,11 @@ public final class SettingsChannelView extends FrameLayout {
     private final ActivityResultLauncher<String[]> importLauncher;
     private final ExecutorService importExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService cleanupExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService serverExecutor = Executors.newSingleThreadExecutor();
     private boolean importing;
     private boolean cleaning;
     private boolean refreshing;
+    private boolean connectingServer;
 
     public SettingsChannelView(MainActivity activity) {
         super(activity);
@@ -78,6 +85,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
         hitomiAddressBox = findViewById(R.id.hitomi_address_box);
         toonkorAddressBox = findViewById(R.id.toonkor_address_box);
+        serverAddressBox = findViewById(R.id.server_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
@@ -85,6 +93,8 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl = findViewById(R.id.wolfdot_url);
         hitomiUrl = findViewById(R.id.hitomi_url);
         toonkorUrl = findViewById(R.id.toonkor_url);
+        serverUrl = findViewById(R.id.server_url);
+        serverConnectionStatus = findViewById(R.id.server_connection_status);
         compatibilityMode = findViewById(R.id.compatibility_mode);
         autoAdvance = findViewById(R.id.auto_advance);
         autoAdvanceOptions = findViewById(R.id.auto_advance_options);
@@ -161,6 +171,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_wolfdot_url).setOnClickListener(v -> saveWolfdotUrl());
         findViewById(R.id.save_hitomi_url).setOnClickListener(v -> saveHitomiUrl());
         findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
+        findViewById(R.id.save_server_url).setOnClickListener(v -> saveServerUrl());
         importButton.setOnClickListener(v -> {
             if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
         });
@@ -185,6 +196,18 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
         hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        String host = LanServerSettings.getHost(activity);
+        int port = LanServerSettings.getPort(activity);
+        if (host != null && !host.isEmpty()) {
+            serverUrl.setText(host + ":" + port);
+            String name = LanServerSettings.getDisplayName(activity);
+            serverConnectionStatus.setText(name == null || name.isEmpty()
+                    ? "저장된 주소: " + host + ":" + port
+                    : "저장된 서버: " + name + " · " + host + ":" + port);
+        } else {
+            serverUrl.setText("");
+            serverConnectionStatus.setText("주소가 없으면 같은 Wi-Fi에서 자동으로 서버를 찾습니다.");
+        }
         compatibilityMode.setChecked(SourceSettings.isCompatibilityMode(activity));
         boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
         autoAdvance.setChecked(autoAdvanceEnabled);
@@ -441,6 +464,64 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "\uD230\uCF54 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
     }
 
+    private void saveServerUrl() {
+        if (connectingServer) return;
+        String raw = serverUrl.getText().toString().trim();
+        if (raw.isEmpty()) {
+            // try auto discovery and save
+            connectingServer = true;
+            serverConnectionStatus.setText("같은 Wi-Fi에서 서버를 찾는 중…");
+            serverExecutor.execute(() -> {
+                try {
+                    LanServerConnector.Connection connection = LanServerConnector.connect(activity);
+                    post(() -> {
+                        connectingServer = false;
+                        if (connection == null) {
+                            serverConnectionStatus.setText("서버가 연결되지 않았습니다");
+                            Toast.makeText(activity, "서버가 연결되지 않았습니다", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        serverUrl.setText(connection.host + ":" + connection.port);
+                        serverConnectionStatus.setText("연결됨 · " + connection.host + ":" + connection.port);
+                        activity.applyChannelSettings();
+                        Toast.makeText(activity, "서버에 연결했습니다.", Toast.LENGTH_SHORT).show();
+                    });
+                } catch (Exception error) {
+                    post(() -> {
+                        connectingServer = false;
+                        serverConnectionStatus.setText("서버가 연결되지 않았습니다");
+                        Toast.makeText(activity, "서버가 연결되지 않았습니다", Toast.LENGTH_LONG).show();
+                    });
+                }
+            });
+            return;
+        }
+        connectingServer = true;
+        serverConnectionStatus.setText("서버에 연결하는 중…");
+        serverExecutor.execute(() -> {
+            try {
+                LanServerConnector.Connection connection =
+                        LanServerConnector.connectManual(activity, raw);
+                post(() -> {
+                    connectingServer = false;
+                    serverUrl.setText(connection.host + ":" + connection.port);
+                    serverConnectionStatus.setText("연결됨 · " + connection.host + ":" + connection.port);
+                    activity.applyChannelSettings();
+                    Toast.makeText(activity, "서버 주소를 저장하고 연결했습니다.",
+                            Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null
+                        ? "서버가 연결되지 않았습니다" : error.getMessage();
+                post(() -> {
+                    connectingServer = false;
+                    serverConnectionStatus.setText(message);
+                    Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
     private void invalidUrl() {
         Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
                 Toast.LENGTH_LONG).show();
@@ -454,6 +535,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_wolfdot) return SourceSettings.SOURCE_WOLFDOT;
         if (checkedId == R.id.source_hitomi) return SourceSettings.SOURCE_HITOMI;
         if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
+        if (checkedId == R.id.source_server) return SourceSettings.SOURCE_SERVER;
         return SourceSettings.SOURCE_NAVER;
     }
 
@@ -465,6 +547,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return R.id.source_wolfdot;
         if (SourceSettings.SOURCE_HITOMI.equals(source)) return R.id.source_hitomi;
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
+        if (SourceSettings.SOURCE_SERVER.equals(source)) return R.id.source_server;
         return R.id.source_naver;
     }
 
@@ -476,6 +559,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotAddressBox.setVisibility(SourceSettings.SOURCE_WOLFDOT.equals(source) ? VISIBLE : GONE);
         hitomiAddressBox.setVisibility(SourceSettings.SOURCE_HITOMI.equals(source) ? VISIBLE : GONE);
         toonkorAddressBox.setVisibility(SourceSettings.SOURCE_TOONKOR.equals(source) ? VISIBLE : GONE);
+        serverAddressBox.setVisibility(SourceSettings.SOURCE_SERVER.equals(source) ? VISIBLE : GONE);
     }
 
 }

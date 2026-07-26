@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
 
@@ -17,6 +18,7 @@ import com.webtoonmap.mobile.activation.ActivationActivity;
 import com.webtoonmap.mobile.activation.ActivationStore;
 import com.webtoonmap.mobile.ui.DownloadChannelView;
 import com.webtoonmap.mobile.ui.NaverChannelView;
+import com.webtoonmap.mobile.ui.ServerChannelView;
 import com.webtoonmap.mobile.ui.SettingsChannelView;
 import com.webtoonmap.mobile.ui.SystemBarInsets;
 import com.webtoonmap.mobile.storage.SourceSettings;
@@ -27,6 +29,7 @@ public final class MainActivity extends AppCompatActivity {
     private Button downloadsButton;
     private Button settingsButton;
     private NaverChannelView naverView;
+    private ServerChannelView serverView;
     private DownloadChannelView downloadsView;
     private SettingsChannelView settingsView;
     private int selectedChannel = 0;
@@ -44,13 +47,14 @@ public final class MainActivity extends AppCompatActivity {
         downloadsButton = findViewById(R.id.nav_downloads);
         settingsButton = findViewById(R.id.nav_settings);
         naverButton.setText(SourceSettings.channelLabel(this));
-        naverView = new NaverChannelView(this);
+        recreateBrowseChannel();
         downloadsView = new DownloadChannelView(this);
         settingsView = new SettingsChannelView(this);
 
         naverButton.setOnClickListener(v -> {
             showNaver();
-            naverView.goHome();
+            if (serverView != null) serverView.goHome();
+            else if (naverView != null) naverView.goHome();
         });
         downloadsButton.setOnClickListener(v -> showDownloads());
         settingsButton.setOnClickListener(v -> showSettings());
@@ -61,7 +65,7 @@ public final class MainActivity extends AppCompatActivity {
             @Override public void handleOnBackPressed() {
                 if (selectedChannel != 0) {
                     showNaver();
-                } else if (naverView.canGoBack()) {
+                } else if (naverView != null && naverView.canGoBack()) {
                     naverView.goBack();
                 } else {
                     setEnabled(false);
@@ -84,7 +88,13 @@ public final class MainActivity extends AppCompatActivity {
 
     private void showNaver() {
         selectedChannel = 0;
-        swap(naverView);
+        if (SourceSettings.isServer(this)) {
+            if (serverView == null) serverView = new ServerChannelView(this);
+            swap(serverView);
+        } else {
+            if (naverView == null) naverView = new NaverChannelView(this);
+            swap(naverView);
+        }
         tintNavigation();
     }
 
@@ -97,14 +107,30 @@ public final class MainActivity extends AppCompatActivity {
 
     public void applyChannelSettings() {
         boolean showing = selectedChannel == 0;
-        if (naverView != null) naverView.destroyWebView();
-        naverView = new NaverChannelView(this);
+        recreateBrowseChannel();
         naverButton.setText(SourceSettings.channelLabel(this));
-        if (showing) swap(naverView);
+        if (showing) {
+            if (SourceSettings.isServer(this)) swap(serverView);
+            else swap(naverView);
+        }
         tintNavigation();
     }
 
-    private void swap(android.view.View view) {
+    private void recreateBrowseChannel() {
+        if (naverView != null) {
+            naverView.destroyWebView();
+            naverView = null;
+        }
+        serverView = null;
+        if (SourceSettings.isServer(this)) {
+            serverView = new ServerChannelView(this);
+        } else {
+            naverView = new NaverChannelView(this);
+        }
+    }
+
+    private void swap(View view) {
+        if (view == null) return;
         if (view.getParent() == content) return;
         content.removeAllViews();
         content.addView(view, new FrameLayout.LayoutParams(
@@ -133,5 +159,3 @@ public final class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 }
-
-
