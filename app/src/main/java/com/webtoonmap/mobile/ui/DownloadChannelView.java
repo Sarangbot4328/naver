@@ -195,45 +195,91 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                 .create();
         progressDialog.show();
         executor.execute(() -> {
-            File file = null;
+            int ok = 0;
+            List<String> uploadedTitles = new ArrayList<>();
+            List<String> errors = new ArrayList<>();
             try {
                 LanServerConnector.Connection connection =
                         LanServerConnector.connect(getContext());
                 if (connection == null) {
                     throw new java.io.IOException("서버가 연결되지 않았습니다");
                 }
-                post(() -> {
-                    exportButton.setText("압축 중…");
-                    status.setText("서버 연결됨 · 압축 중…");
-                    progressDialog.setMessage("작품 패키지를 만드는 중…");
-                });
                 LibraryDatabase database = LibraryDatabase.get(getContext());
-                file = SeriesExporter.export(getContext(), items, database,
-                        (current, total) -> post(() -> {
-                            String text = items.size() + "개 작품 압축 중 · " + current + "/" + total + "회차";
+                int total = items.size();
+                for (int i = 0; i < items.size(); i++) {
+                    SeriesItem series = items.get(i);
+                    final int index = i + 1;
+                    post(() -> {
+                        exportButton.setText("업로드 중…");
+                        String head = index + "/" + total + " · ‘" + series.title + "’";
+                        status.setText(head + " 압축 중…");
+                        progressDialog.setMessage(head + "\n압축 중…");
+                    });
+                    File file = null;
+                    try {
+                        List<SeriesItem> one = new ArrayList<>();
+                        one.add(series);
+                        file = SeriesExporter.export(getContext(), one, database,
+                                (current, episodeTotal) -> post(() -> {
+                                    String text = index + "/" + total + " · ‘" + series.title +
+                                            "’ 압축 · " + current + "/" + episodeTotal + "회차";
+                                    status.setText(text);
+                                    progressDialog.setMessage(text);
+                                }));
+                        final File uploadFile = file;
+                        post(() -> {
+                            String text = index + "/" + total + " · ‘" + series.title + "’ 업로드 중…";
                             status.setText(text);
                             progressDialog.setMessage(text);
-                        }));
-                final File uploadFile = file;
-                post(() -> {
-                    exportButton.setText("업로드 중…");
-                    status.setText("서버로 업로드 중…");
-                    progressDialog.setMessage("서버로 업로드 중…");
-                });
-                LanServerItem uploaded = LanServerClient.upload(getContext(), connection.baseUrl,
-                        uploadFile, (sent, total) -> post(() -> {
-                            String text = "업로드 중…\n" + LanServerClient.percent(sent, total);
-                            status.setText(text.replace('\n', ' '));
-                            progressDialog.setMessage(text);
-                        }));
+                        });
+                        LanServerItem uploaded = LanServerClient.upload(getContext(),
+                                connection.baseUrl, uploadFile, (sent, totalBytes) -> post(() -> {
+                                    String text = index + "/" + total + " · ‘" + series.title +
+                                            "’ 업로드\n" + LanServerClient.percent(sent, totalBytes);
+                                    status.setText(text.replace('\n', ' '));
+                                    progressDialog.setMessage(text);
+                                }));
+                        ok++;
+                        uploadedTitles.add(uploaded.title == null || uploaded.title.isEmpty()
+                                ? series.title : uploaded.title);
+                    } catch (Exception seriesError) {
+                        String message = seriesError.getMessage() == null
+                                ? "업로드 실패" : seriesError.getMessage();
+                        errors.add("‘" + series.title + "’: " + message);
+                    } finally {
+                        if (file != null) deleteExportFile(file);
+                    }
+                }
+                final int successCount = ok;
+                final String hostLabel = connection.host + ":" + connection.port;
                 post(() -> {
                     progressDialog.dismiss();
-                    finishExportUi("서버 업로드 완료 · " + uploaded.title);
+                    String summary = "서버 업로드 완료 · " + successCount + "/" + total + "개 작품";
+                    if (!errors.isEmpty()) summary += " · 실패 " + errors.size() + "개";
+                    finishExportUi(summary);
+                    StringBuilder body = new StringBuilder();
+                    body.append(successCount).append("개 작품을 각각 서버에 올렸습니다.\n")
+                            .append(hostLabel);
+                    if (!uploadedTitles.isEmpty()) {
+                        body.append("\n\n");
+                        int show = Math.min(8, uploadedTitles.size());
+                        for (int i = 0; i < show; i++) {
+                            body.append("· ").append(uploadedTitles.get(i)).append('\n');
+                        }
+                        if (uploadedTitles.size() > show) {
+                            body.append("· 외 ").append(uploadedTitles.size() - show).append("개\n");
+                        }
+                    }
+                    if (!errors.isEmpty()) {
+                        body.append("\n실패\n· ").append(errors.get(0));
+                        if (errors.size() > 1) {
+                            body.append("\n· 외 ").append(errors.size() - 1).append("건");
+                        }
+                    }
+                    body.append("\n\n서버에서 작품별 삭제·다운로드가 가능합니다.");
                     new AlertDialog.Builder(getContext())
-                            .setTitle("서버 업로드 완료")
-                            .setMessage("‘" + uploaded.title + "’ 패키지를 서버에 올렸습니다.\n" +
-                                    connection.host + ":" + connection.port + "\n\n" +
-                                    "다른 기기에서 설정 → 서버 연결 후 받을 수 있습니다.")
+                            .setTitle(successCount > 0 ? "서버 업로드 완료" : "서버 업로드 실패")
+                            .setMessage(body.toString().trim())
                             .setPositiveButton("확인", null)
                             .show();
                 });
@@ -250,8 +296,6 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                             .show();
                     Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
                 });
-            } finally {
-                if (file != null) deleteExportFile(file);
             }
         });
     }

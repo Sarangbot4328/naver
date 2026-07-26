@@ -85,6 +85,32 @@ public final class LanServerClient {
         }
     }
 
+    public static byte[] downloadBytes(String url, int maxBytes) throws IOException {
+        if (url == null || url.trim().isEmpty()) throw new IOException("URL이 없습니다.");
+        if (maxBytes <= 0) maxBytes = 2 * 1024 * 1024;
+        HttpURLConnection connection = open(url, "GET", CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS);
+        try {
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IOException("다운로드 실패 (" + code + ")");
+            }
+            try (InputStream in = new BufferedInputStream(connection.getInputStream());
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[16 * 1024];
+                int read;
+                int total = 0;
+                while ((read = in.read(buffer)) >= 0) {
+                    total += read;
+                    if (total > maxBytes) throw new IOException("파일이 너무 큽니다.");
+                    out.write(buffer, 0, read);
+                }
+                return out.toByteArray();
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
     public static LanServerItem upload(Context context, String baseUrl, File file, Progress progress)
             throws IOException {
         if (file == null || !file.isFile()) throw new IOException("업로드할 파일이 없습니다.");
