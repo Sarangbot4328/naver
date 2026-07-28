@@ -118,7 +118,14 @@ public final class BlacktoonApi {
             String title = stripHtml(obj.optString("t", "")).trim();
             if (title.isEmpty()) title = "회차";
             int order = obj.optInt("od", 0);
-            int number = order > 0 ? order : episodeNumber(title);
+            // Blacktoon currently uses "od" as a large internal article/order ID
+            // (for example 170997), not as the human-visible episode number.
+            // Prefer the number printed in the title and only accept "od" when it
+            // is in the same bounded range used by the local library.
+            int parsedNumber = episodeNumber(title);
+            int number = parsedNumber > 0
+                    ? parsedNumber
+                    : (order > 0 && order <= 5000 ? order : 0);
             if (number <= 0 || usedNumbers.contains(number)) {
                 while (usedNumbers.contains(fallbackNumber)) fallbackNumber++;
                 number = fallbackNumber;
@@ -278,6 +285,13 @@ public final class BlacktoonApi {
         Matcher matcher = Pattern.compile("(\\d{1,4})\\s*(?:화|회)").matcher(text);
         int result = 0;
         while (matcher.find()) result = Integer.parseInt(matcher.group(1));
+        if (result <= 0) {
+            // Some Blacktoon titles use a serial prefix for specials, such as
+            // "0050 - 후기", without writing "50화".
+            Matcher prefix = Pattern.compile("^\\s*0*(\\d{1,4})\\s*(?:[-–—.:]|$)")
+                    .matcher(text);
+            if (prefix.find()) result = Integer.parseInt(prefix.group(1));
+        }
         return result > 0 && result <= 5000 ? result : 0;
     }
 

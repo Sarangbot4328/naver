@@ -28,6 +28,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -143,6 +145,7 @@ public final class TransferImporter {
         WebtoonStorage storage = new WebtoonStorage(context, null);
         List<StagedEpisode> staged = new ArrayList<>();
         Set<Integer> seenNumbers = new HashSet<>();
+        int fallbackNumber = 1;
         int lastRead = item.isNull("last_read_episode")
                 ? -1 : item.optInt("last_read_episode", -1);
 
@@ -150,15 +153,28 @@ public final class TransferImporter {
             for (int i = 0; i < episodeJson.length(); i++) {
                 JSONObject episode = episodeJson.optJSONObject(i);
                 if (episode == null) continue;
-                int number = episode.optInt("episode_number", episode.optInt("number", 0));
-                if (number <= 0 || number > 5000 || !seenNumbers.add(number)) continue;
+                int storedNumber = episode.optInt("episode_number", episode.optInt("number", 0));
+                String episodeTitle = episode.optString("title", "").trim();
+                int number = storedNumber;
+                if (number <= 0 || number > 5000 || seenNumbers.contains(number)) {
+                    number = episodeNumber(episodeTitle);
+                }
+                if (number <= 0 || number > 5000 || seenNumbers.contains(number)) {
+                    while (fallbackNumber <= 5000 && seenNumbers.contains(fallbackNumber)) {
+                        fallbackNumber++;
+                    }
+                    if (fallbackNumber > 5000) continue;
+                    number = fallbackNumber++;
+                }
+                seenNumbers.add(number);
+                int archiveNumber = storedNumber > 0 ? storedNumber : number;
                 String folderName = episode.optString("folder_name",
-                        String.format(Locale.US, "%03d.zip", number));
+                        String.format(Locale.US, "%03d.zip", archiveNumber));
                 if (!safeLeaf(folderName)) throw new IOException("잘못된 회차 파일명입니다.");
                 File stagedZip = new File(stageDir, String.format(Locale.US, "%03d.zip", number));
                 int imageCount = stageEpisode(zip, slug, folderName, stagedZip);
                 if (imageCount <= 0) throw new IOException(number + "화 이미지가 없습니다.");
-                String episodeTitle = episode.optString("title", number + "화");
+                if (episodeTitle.isEmpty()) episodeTitle = number + "화";
                 boolean viewed = !forceUnread && (episode.has("viewed")
                         ? episode.optBoolean("viewed", false)
                         : lastRead >= number);
@@ -339,6 +355,19 @@ public final class TransferImporter {
     private static boolean isImage(String value) {
         return value != null && value.toLowerCase(Locale.US)
                 .matches(".*\\.(?:jpg|jpeg|png|webp|gif|bmp)$");
+    }
+
+    private static int episodeNumber(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        Matcher matcher = Pattern.compile("(\\d{1,4})\\s*(?:화|회)").matcher(text);
+        int result = 0;
+        while (matcher.find()) result = Integer.parseInt(matcher.group(1));
+        if (result <= 0) {
+            Matcher prefix = Pattern.compile("^\\s*0*(\\d{1,4})\\s*(?:[-–—.:]|$)")
+                    .matcher(text);
+            if (prefix.find()) result = Integer.parseInt(prefix.group(1));
+        }
+        return result > 0 && result <= 5000 ? result : 0;
     }
 
     private static void copy(InputStream input, OutputStream output) throws Exception {

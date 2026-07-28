@@ -646,7 +646,8 @@ public final class SeriesDownloadService extends Service {
                 try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(tempZip))) {
                     for (int i = 0; i < images.size(); i++) {
                         checkCancelled();
-                        String imageUrl = images.get(i);
+                        String imageUrl = images.get(i);
+
                         update(label + " · " + (i + 1) + "/" + images.size() +
                                         "장 다운로드 중",
                                 current - 1, episodes.size());

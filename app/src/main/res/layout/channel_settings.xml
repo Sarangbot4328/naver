@@ -306,11 +306,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.14" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.15" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.14 업데이트 · 2026-07-26\n• 서버 업로드·다운로드를 작품 단위로 분리\n• 서버 목록에 썸네일·태그·작품 설명 표시\n\n1.5.13 업데이트 · 2026-07-26\n• 같은 Wi-Fi LAN 서버 연결·서버에 올리기·서버에서 가져오기\n• 설정 채널 목록에 ‘서버 연결’ 추가\n• 자동 서버 검색 및 수동 IP 입력\n\n1.5.12 업데이트 · 2026-07-22\n• 툰코 이미지 요청 30초 시간 제한 및 유한 재시도\n• 특정 이미지 실패 시 해당 회차 자동 재분석·재다운로드\n• 재시도 실패 시 실제 연결·HTTP 오류 표시" />
+                android:text="1.5.15 업데이트 · 2026-07-28\n• 블랙툰 회차 번호를 게시물 ID 대신 실제 회차 번호로 저장\n• 서버의 기존 블랙툰 파일도 회차 번호 복구 후 가져오기\n\n1.5.14 업데이트 · 2026-07-26\n• 서버 업로드·다운로드를 작품 단위로 분리\n• 서버 목록에 썸네일·태그·작품 설명 표시\n\n1.5.13 업데이트 · 2026-07-26\n• 같은 Wi-Fi LAN 서버 연결·서버에 올리기·서버에서 가져오기\n• 설정 채널 목록에 ‘서버 연결’ 추가\n• 자동 서버 검색 및 수동 IP 입력\n\n1.5.12 업데이트 · 2026-07-22\n• 툰코 이미지 요청 30초 시간 제한 및 유한 재시도\n• 특정 이미지 실패 시 해당 회차 자동 재분석·재다운로드\n• 재시도 실패 시 실제 연결·HTTP 오류 표시" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"

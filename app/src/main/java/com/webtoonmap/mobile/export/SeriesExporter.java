@@ -25,8 +25,12 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -81,21 +85,40 @@ public final class SeriesExporter {
                 WebtoonStorage storage = new WebtoonStorage(context, series.storageUri);
 
                 JSONArray episodeArray = new JSONArray();
+                Set<Integer> transferNumbers = new HashSet<>();
+                int fallbackNumber = 1;
                 Integer lastRead = null;
                 for (EpisodeItem episode : episodes) {
+                    int transferNumber = episode.number;
+                    if (transferNumber <= 0 || transferNumber > 5000 ||
+                            transferNumbers.contains(transferNumber)) {
+                        transferNumber = episodeNumber(episode.title);
+                    }
+                    if (transferNumber <= 0 || transferNumber > 5000 ||
+                            transferNumbers.contains(transferNumber)) {
+                        while (fallbackNumber <= 5000 && transferNumbers.contains(fallbackNumber)) {
+                            fallbackNumber++;
+                        }
+                        if (fallbackNumber > 5000) {
+                            throw new IOException("내보낼 수 있는 회차 번호가 부족합니다.");
+                        }
+                        transferNumber = fallbackNumber++;
+                    }
+                    transferNumbers.add(transferNumber);
+
                     String episodeName = String.format(Locale.US, "%03d.zip", episode.number);
                     try (InputStream in = storage.openEpisodeZip(series.titleId, episode.number)) {
                         writeEntry(zip, prefix + "episodes/" + episodeName, in);
                     }
                     JSONObject value = new JSONObject();
-                    value.put("episode_number", episode.number);
+                    value.put("episode_number", transferNumber);
                     value.put("folder_name", episodeName);
                     value.put("title", episode.title);
                     value.put("image_count", episode.imageCount);
                     value.put("viewed", episode.viewed);
                     episodeArray.put(value);
-                    if (episode.viewed && (lastRead == null || episode.number > lastRead)) {
-                        lastRead = episode.number;
+                    if (episode.viewed && (lastRead == null || transferNumber > lastRead)) {
+                        lastRead = transferNumber;
                     }
                     completed++;
                     if (progress != null) progress.onProgress(completed, totalEpisodes);
@@ -316,6 +339,19 @@ public final class SeriesExporter {
         zip.putNextEntry(new ZipEntry(name));
         copy(input, zip);
         zip.closeEntry();
+    }
+
+    private static int episodeNumber(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        Matcher matcher = Pattern.compile("(\\d{1,4})\\s*(?:화|회)").matcher(text);
+        int result = 0;
+        while (matcher.find()) result = Integer.parseInt(matcher.group(1));
+        if (result <= 0) {
+            Matcher prefix = Pattern.compile("^\\s*0*(\\d{1,4})\\s*(?:[-–—.:]|$)")
+                    .matcher(text);
+            if (prefix.find()) result = Integer.parseInt(prefix.group(1));
+        }
+        return result > 0 && result <= 5000 ? result : 0;
     }
 
     private static void copy(InputStream input, OutputStream output) throws Exception {
