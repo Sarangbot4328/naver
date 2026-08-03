@@ -358,7 +358,7 @@ public final class ToonkorApi {
     private static String absoluteUrl(String base, String raw) {
         if (raw == null || raw.trim().isEmpty()) return null;
         try {
-            return new URL(new URL(base), raw.trim()).toString();
+            return new URL(new URL(base), raw.trim()).toURI().toASCIIString();
         } catch (Exception ignored) {
             return null;
         }

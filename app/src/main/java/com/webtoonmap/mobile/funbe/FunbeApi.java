@@ -49,11 +49,21 @@ public final class FunbeApi {
 
     public static List<String> fetchEpisodeImages(String episodeUrl, String cookie)
             throws Exception {
-        return ToonkorApi.fetchEpisodeImages(episodeUrl, cookie, SITE_NAME);
+        try {
+            return ToonkorApi.fetchEpisodeImages(episodeUrl, cookie, SITE_NAME);
+        } catch (Exception firstError) {
+            if (cookie == null || cookie.isEmpty()) throw firstError;
+            return ToonkorApi.fetchEpisodeImages(episodeUrl, null, SITE_NAME);
+        }
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie)
             throws Exception {
-        return ToonkorApi.downloadBytes(url, referer, cookie, SITE_NAME);
+        try {
+            return ToonkorApi.downloadBytes(url, referer, cookie, SITE_NAME);
+        } catch (Exception firstError) {
+            if (cookie == null || cookie.isEmpty()) throw firstError;
+            return ToonkorApi.downloadBytes(url, referer, null, SITE_NAME);
+        }
     }
 }

@@ -75,7 +75,7 @@ final class DownloadQueue {
     private static boolean isValidKey(String value) {
         return value != null && value.matches(
                 "(?:\\d+|joatoon_\\d+|manhwabang_[0-9a-f]+|ililtoon_[0-9a-f]+|" +
-                        "blacktoon_[0-9a-f]+|wolfdot_[0-9a-f]+|hitomi_\\d+|" +
+                        "blacktoon_[0-9a-f]+|wolfdot_[0-9a-f]+|funbe_[0-9a-f]+|hitomi_\\d+|" +
                         "toonkor_[\\p{L}\\p{N}_.-]+)");
     }
 

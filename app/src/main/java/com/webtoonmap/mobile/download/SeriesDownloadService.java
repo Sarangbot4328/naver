@@ -579,14 +579,24 @@ public final class SeriesDownloadService extends Service {
         if (job == null) {
             throw new IllegalStateException("\uD380\uBE44 \uC791\uD488 \uC8FC\uC18C \uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC791\uD488 \uD398\uC774\uC9C0\uC5D0\uC11C \uB2E4\uC2DC \uB2E4\uC6B4\uB85C\uB4DC\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694.");
         }
+        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
         String baseUrl = SourceSettings.getFunbeUrl(this);
         String pageUrl = job.pageUrl(baseUrl);
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        String initialCookie = CookieManager.getInstance().getCookie(baseUrl);
         ToonkorMetadataStore.Entry cached = ToonkorMetadataStore.get(this, "funbe:" + job.relativeUrl);
         checkCancelled();
         update("\uD380\uBE44 \uC791\uD488 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\u2026 \u00B7 \uB300\uAE30\uC5F4 " +
                 DownloadQueue.size(this) + "\uAC1C", 0, 0);
-        ToonkorApi.SeriesInfo info = FunbeApi.fetchSeriesInfo(pageUrl, cookie, cached);
+        ToonkorApi.SeriesInfo info;
+        String acceptedCookie = initialCookie;
+        try {
+            info = FunbeApi.fetchSeriesInfo(pageUrl, initialCookie, cached);
+        } catch (Exception firstError) {
+            if (initialCookie == null || initialCookie.isEmpty()) throw firstError;
+            acceptedCookie = null;
+            info = FunbeApi.fetchSeriesInfo(pageUrl, null, cached);
+        }
+        final String cookie = acceptedCookie;
         ToonkorMetadataStore.put(this, "funbe:" + job.relativeUrl, info.title, info.description,
                 info.thumbnailUrl, info.tags);
         List<ExternalEpisode> episodes = new java.util.ArrayList<>();
@@ -596,14 +606,16 @@ public final class SeriesDownloadService extends Service {
         downloadExternalSeries(titleId, "\uD380\uBE44", info.title, info.description, info.tags,
                 info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
                     @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        String currentCookie = CookieManager.getInstance().getCookie(baseUrl);
+                        String currentCookie = cookie == null ? null :
+                                CookieManager.getInstance().getCookie(baseUrl);
                         if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
                         return FunbeApi.fetchEpisodeImages(episodeUrl, currentCookie);
                     }
 
                     @Override public byte[] downloadBytes(String imageUrl, String referer)
                             throws Exception {
-                        String currentCookie = CookieManager.getInstance().getCookie(baseUrl);
+                        String currentCookie = cookie == null ? null :
+                                CookieManager.getInstance().getCookie(baseUrl);
                         if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
                         return FunbeApi.downloadBytes(imageUrl, referer, currentCookie);
                     }

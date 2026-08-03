@@ -24,6 +24,10 @@ public final class ConnectionCompatibility {
                 ? webViewUserAgent(context) : LEGACY_USER_AGENT;
     }
 
+
+    public static void configureForWebView(Context context) {
+        requestUserAgent = webViewUserAgent(context);
+    }
     public static String requestUserAgent() {
         return requestUserAgent;
     }
