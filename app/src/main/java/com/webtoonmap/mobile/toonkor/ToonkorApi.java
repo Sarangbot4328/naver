@@ -84,15 +84,22 @@ public final class ToonkorApi {
     }
 
     public static SeriesInfo fetchSeriesInfo(String pageUrl, String cookie,
-                                             ToonkorMetadataStore.Entry cached)
-            throws Exception {
-        String html = getText(pageUrl, origin(pageUrl) + "/", cookie);
+                                             ToonkorMetadataStore.Entry cached) throws Exception {
+        return fetchSeriesInfo(pageUrl, cookie, cached, "\uD230\uCF54");
+    }
+
+    public static SeriesInfo fetchSeriesInfo(String pageUrl, String cookie,
+                                             ToonkorMetadataStore.Entry cached,
+                                             String siteName) throws Exception {
+        String label = siteName == null || siteName.trim().isEmpty()
+                ? "\uD230\uCF54" : siteName.trim();
+        String html = getText(pageUrl, origin(pageUrl) + "/", cookie, label);
         String title = stripHtml(firstGroup(html,
                 "(?is)<td\\b[^>]*class=[\\\"'][^\\\"']*bt_title[^\\\"']*[\\\"'][^>]*>(.*?)</td>"));
         if (title.isEmpty()) title = stripHtml(findMeta(html, "title"));
         if (title.isEmpty()) title = stripHtml(tagText(html, "title"));
         if (title.isEmpty() && cached != null) title = cached.title;
-        if (title.isEmpty()) title = "툰코 웹툰";
+        if (title.isEmpty()) title = label + " \uC6F9\uD230";
 
         String description = stripHtml(firstGroup(html,
                 "(?is)<td\\b[^>]*class=[\\\"'][^\\\"']*bt_over[^\\\"']*[\\\"'][^>]*>(.*?)</td>"));
@@ -139,14 +146,20 @@ public final class ToonkorApi {
             if (episodeTitle.length() > 120) episodeTitle = episodeTitle.substring(0, 120);
             episodeMap.put(number, new EpisodeMeta(number, episodeTitle, url));
         }
-        if (episodeMap.isEmpty()) throw new IOException("툰코 회차 목록을 찾지 못했습니다.");
+        if (episodeMap.isEmpty()) throw new IOException(label + " \uD68C\uCC28 \uBAA9\uB85D\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
         return new SeriesInfo(title, description, thumbnail, tags, pageUrl,
                 new ArrayList<>(episodeMap.values()));
     }
 
-    public static List<String> fetchEpisodeImages(String episodeUrl, String cookie)
-            throws Exception {
-        String html = getText(episodeUrl, episodeUrl, cookie);
+    public static List<String> fetchEpisodeImages(String episodeUrl, String cookie) throws Exception {
+        return fetchEpisodeImages(episodeUrl, cookie, "\uD230\uCF54");
+    }
+
+    public static List<String> fetchEpisodeImages(String episodeUrl, String cookie,
+                                                   String siteName) throws Exception {
+        String label = siteName == null || siteName.trim().isEmpty()
+                ? "\uD230\uCF54" : siteName.trim();
+        String html = getText(episodeUrl, episodeUrl, cookie, label);
         String encoded = firstGroup(html,
                 "(?is)var\\s+toon_img\\s*=\\s*[\\\"']([A-Za-z0-9+/=\\s]+)[\\\"']\\s*;");
         String imageHtml = "";
@@ -155,14 +168,14 @@ public final class ToonkorApi {
                 byte[] decoded = Base64.decode(encoded.replaceAll("\\s+", ""), Base64.DEFAULT);
                 imageHtml = new String(decoded, StandardCharsets.UTF_8);
             } catch (Exception error) {
-                throw new IOException("툰코 이미지 정보 해제 실패", error);
+                throw new IOException(label + " \uC774\uBBF8\uC9C0 \uC815\uBCF4 \uD574\uC81C \uC2E4\uD328", error);
             }
         }
         if (imageHtml.isEmpty()) {
             imageHtml = firstGroup(html,
                     "(?is)<div\\b[^>]*id=[\\\"']toon_img[\\\"'][^>]*>(.*?)</div>");
         }
-        if (imageHtml.isEmpty()) throw new IOException("툰코 이미지 정보를 찾지 못했습니다.");
+        if (imageHtml.isEmpty()) throw new IOException(label + " \uC774\uBBF8\uC9C0 \uC815\uBCF4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
 
         LinkedHashSet<String> images = new LinkedHashSet<>();
         Matcher matcher = Pattern.compile("(?is)<img\\b[^>]*>").matcher(imageHtml);
@@ -174,19 +187,26 @@ public final class ToonkorApi {
             String url = absoluteUrl(episodeUrl, raw.replace("&amp;", "&"));
             if (url != null) images.add(url);
         }
-        if (images.isEmpty()) throw new IOException("툰코 회차 이미지를 찾지 못했습니다.");
+        if (images.isEmpty()) throw new IOException(label + " \uD68C\uCC28 \uC774\uBBF8\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
         return new ArrayList<>(images);
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie) throws Exception {
-        return retry(() -> downloadOnceWithJpgFallback(url, referer, cookie),
-                "툰코 이미지 요청");
+        return downloadBytes(url, referer, cookie, "\uD230\uCF54");
     }
 
-    private static byte[] downloadOnceWithJpgFallback(String url, String referer, String cookie)
-            throws Exception {
+    public static byte[] downloadBytes(String url, String referer, String cookie,
+                                       String siteName) throws Exception {
+        String label = siteName == null || siteName.trim().isEmpty()
+                ? "\uD230\uCF54" : siteName.trim();
+        return retry(() -> downloadOnceWithJpgFallback(url, referer, cookie, label),
+                label + " \uC774\uBBF8\uC9C0 \uC694\uCCAD");
+    }
+
+    private static byte[] downloadOnceWithJpgFallback(String url, String referer, String cookie,
+                                                       String siteName) throws Exception {
         try {
-            return downloadOnce(url, referer, cookie);
+            return downloadOnce(url, referer, cookie, siteName);
         } catch (IOException original) {
             if (original instanceof InterruptedIOException) throw original;
             String clean = url.replaceFirst("[?#].*$", "");
@@ -194,36 +214,38 @@ public final class ToonkorApi {
             int dot = clean.lastIndexOf('.');
             if (dot <= clean.lastIndexOf('/')) throw original;
             String suffix = url.substring(clean.length());
-            return downloadOnce(clean.substring(0, dot) + ".jpg" + suffix, referer, cookie);
+            return downloadOnce(clean.substring(0, dot) + ".jpg" + suffix, referer, cookie, siteName);
         }
     }
 
-    private static byte[] downloadOnce(String url, String referer, String cookie) throws Exception {
+    private static byte[] downloadOnce(String url, String referer, String cookie,
+                                       String siteName) throws Exception {
         HttpURLConnection conn = open(url, referer, cookie, "image/*,*/*;q=0.8");
         try {
             int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) throw new IOException("툰코 이미지 HTTP " + code);
-            return readAll(conn.getInputStream(), "툰코 이미지 다운로드 중단");
+            if (code < 200 || code >= 300) throw new IOException(siteName + " \uC774\uBBF8\uC9C0 HTTP " + code);
+            return readAll(conn.getInputStream(), siteName + " \uC774\uBBF8\uC9C0 \uB2E4\uC6B4\uB85C\uB4DC \uC911\uB2E8");
         } finally {
             NetworkRetry.release(conn);
             conn.disconnect();
         }
     }
 
-    private static String getText(String url, String referer, String cookie) throws Exception {
+    private static String getText(String url, String referer, String cookie,
+                                  String siteName) throws Exception {
         return retry(() -> {
             HttpURLConnection conn = open(url, referer, cookie,
                     "text/html,application/xhtml+xml,*/*;q=0.8");
             try {
                 int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) throw new IOException("툰코 응답 오류 " + code);
-                return new String(readAll(conn.getInputStream(), "툰코 요청 중단"),
+                if (code < 200 || code >= 300) throw new IOException(siteName + " \uC751\uB2F5 \uC624\uB958 " + code);
+                return new String(readAll(conn.getInputStream(), siteName + " \uC694\uCCAD \uC911\uB2E8"),
                         StandardCharsets.UTF_8);
             } finally {
                 NetworkRetry.release(conn);
                 conn.disconnect();
             }
-        }, "툰코 페이지 요청");
+        }, siteName + " \uD398\uC774\uC9C0 \uC694\uCCAD");
     }
     private static <T> T retry(NetworkRetry.Request<T> request, String label)
             throws Exception {

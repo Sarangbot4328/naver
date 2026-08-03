@@ -13,6 +13,7 @@ public final class SourceSettings {
     public static final String SOURCE_WOLFDOT = "wolfdot";
     public static final String SOURCE_HITOMI = "hitomi";
     public static final String SOURCE_TOONKOR = "toonkor";
+    public static final String SOURCE_FUNBE = "funbe";
     public static final String SOURCE_SERVER = "server";
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
     public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
@@ -21,6 +22,7 @@ public final class SourceSettings {
     public static final String DEFAULT_WOLFDOT_URL = "https://wfwf421.com";
     public static final String DEFAULT_HITOMI_URL = "https://hitomi.la";
     public static final String DEFAULT_TOONKOR_URL = "https://tkor137.com";
+    public static final String DEFAULT_FUNBE_URL = "https://funbe662.com";
     public static final String VIEW_MODE_SCROLL = "scroll";
     public static final String VIEW_MODE_PAGE = "page";
     public static final String VIEW_MODE_PAGE_FIT = "page_fit";
@@ -33,6 +35,7 @@ public final class SourceSettings {
     private static final String KEY_WOLFDOT_URL = "wolfdot_url";
     private static final String KEY_HITOMI_URL = "hitomi_url";
     private static final String KEY_TOONKOR_URL = "toonkor_url";
+    private static final String KEY_FUNBE_URL = "funbe_url";
     private static final String KEY_COMPATIBILITY_MODE = "compatibility_mode";
     private static final String KEY_VIEW_MODE = "view_mode";
     private static final String KEY_LOW_DATA_MODE = "low_data_mode";
@@ -215,6 +218,14 @@ public final class SourceSettings {
         return setUrl(context, KEY_TOONKOR_URL, raw);
     }
 
+    public static String getFunbeUrl(Context context) {
+        return getUrl(context, KEY_FUNBE_URL, DEFAULT_FUNBE_URL);
+    }
+
+    public static boolean setFunbeUrl(Context context, String raw) {
+        return setUrl(context, KEY_FUNBE_URL, raw);
+    }
+
     public static String channelLabel(Context context) {
         String source = getSource(context);
         if (SOURCE_SERVER.equals(source)) return "서버";
@@ -225,6 +236,7 @@ public final class SourceSettings {
         if (SOURCE_WOLFDOT.equals(source)) return "늑대닷컴";
         if (SOURCE_HITOMI.equals(source)) return "히토미";
         if (SOURCE_TOONKOR.equals(source)) return "\uD230\uCF54";
+        if (SOURCE_FUNBE.equals(source)) return "\uD380\uBE44";
         return "네이버 웹툰";
     }
 
@@ -238,6 +250,7 @@ public final class SourceSettings {
         if (SOURCE_WOLFDOT.equals(source)) return getWolfdotUrl(context);
         if (SOURCE_HITOMI.equals(source)) return getHitomiUrl(context);
         if (SOURCE_TOONKOR.equals(source)) return getToonkorUrl(context) + "/%EC%9B%B9%ED%88%B0";
+        if (SOURCE_FUNBE.equals(source)) return getFunbeUrl(context) + "/%EC%9B%B9%ED%88%B0";
         return "https://comic.naver.com/webtoon";
     }
 
@@ -261,7 +274,7 @@ public final class SourceSettings {
                 SOURCE_MANHWABANG.equals(source) || SOURCE_ILILTOON.equals(source) ||
                 SOURCE_BLACKTOON.equals(source) || SOURCE_WOLFDOT.equals(source) ||
                 SOURCE_HITOMI.equals(source) || SOURCE_TOONKOR.equals(source) ||
-                SOURCE_SERVER.equals(source);
+                SOURCE_FUNBE.equals(source) || SOURCE_SERVER.equals(source);
     }
 
     public static String normalizeUrl(String raw) {

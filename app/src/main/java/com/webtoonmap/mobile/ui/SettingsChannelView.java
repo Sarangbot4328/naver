@@ -39,6 +39,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final View wolfdotAddressBox;
     private final View hitomiAddressBox;
     private final View toonkorAddressBox;
+    private final View funbeAddressBox;
     private final View serverAddressBox;
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
@@ -47,6 +48,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText wolfdotUrl;
     private final EditText hitomiUrl;
     private final EditText toonkorUrl;
+    private final EditText funbeUrl;
     private final EditText serverUrl;
     private final TextView serverConnectionStatus;
     private final CheckBox compatibilityMode;
@@ -85,6 +87,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
         hitomiAddressBox = findViewById(R.id.hitomi_address_box);
         toonkorAddressBox = findViewById(R.id.toonkor_address_box);
+        funbeAddressBox = findViewById(R.id.funbe_address_box);
         serverAddressBox = findViewById(R.id.server_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
@@ -93,6 +96,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl = findViewById(R.id.wolfdot_url);
         hitomiUrl = findViewById(R.id.hitomi_url);
         toonkorUrl = findViewById(R.id.toonkor_url);
+        funbeUrl = findViewById(R.id.funbe_url);
         serverUrl = findViewById(R.id.server_url);
         serverConnectionStatus = findViewById(R.id.server_connection_status);
         compatibilityMode = findViewById(R.id.compatibility_mode);
@@ -171,6 +175,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_wolfdot_url).setOnClickListener(v -> saveWolfdotUrl());
         findViewById(R.id.save_hitomi_url).setOnClickListener(v -> saveHitomiUrl());
         findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
+        findViewById(R.id.save_funbe_url).setOnClickListener(v -> saveFunbeUrl());
         findViewById(R.id.save_server_url).setOnClickListener(v -> saveServerUrl());
         importButton.setOnClickListener(v -> {
             if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
@@ -196,6 +201,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
         hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
         String host = LanServerSettings.getHost(activity);
         int port = LanServerSettings.getPort(activity);
         if (host != null && !host.isEmpty()) {
@@ -464,6 +470,16 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "\uD230\uCF54 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
     }
 
+    private void saveFunbeUrl() {
+        if (!SourceSettings.setFunbeUrl(activity, funbeUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "\uD380\uBE44 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
+    }
+
     private void saveServerUrl() {
         if (connectingServer) return;
         String raw = serverUrl.getText().toString().trim();
@@ -535,6 +551,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_wolfdot) return SourceSettings.SOURCE_WOLFDOT;
         if (checkedId == R.id.source_hitomi) return SourceSettings.SOURCE_HITOMI;
         if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
+        if (checkedId == R.id.source_funbe) return SourceSettings.SOURCE_FUNBE;
         if (checkedId == R.id.source_server) return SourceSettings.SOURCE_SERVER;
         return SourceSettings.SOURCE_NAVER;
     }
@@ -547,6 +564,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return R.id.source_wolfdot;
         if (SourceSettings.SOURCE_HITOMI.equals(source)) return R.id.source_hitomi;
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) return R.id.source_funbe;
         if (SourceSettings.SOURCE_SERVER.equals(source)) return R.id.source_server;
         return R.id.source_naver;
     }
@@ -559,6 +577,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotAddressBox.setVisibility(SourceSettings.SOURCE_WOLFDOT.equals(source) ? VISIBLE : GONE);
         hitomiAddressBox.setVisibility(SourceSettings.SOURCE_HITOMI.equals(source) ? VISIBLE : GONE);
         toonkorAddressBox.setVisibility(SourceSettings.SOURCE_TOONKOR.equals(source) ? VISIBLE : GONE);
+        funbeAddressBox.setVisibility(SourceSettings.SOURCE_FUNBE.equals(source) ? VISIBLE : GONE);
         serverAddressBox.setVisibility(SourceSettings.SOURCE_SERVER.equals(source) ? VISIBLE : GONE);
     }
 

@@ -35,6 +35,7 @@ import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
 import com.webtoonmap.mobile.network.ConnectionCompatibility;
 import com.webtoonmap.mobile.hitomi.HitomiApi;
+import com.webtoonmap.mobile.funbe.FunbeApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
@@ -145,15 +146,16 @@ public final class NaverChannelView extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setBuiltInZoomControls(false);
         ConnectionCompatibility.configure(activity);
-        if (SourceSettings.isCompatibilityMode(activity) ||
-                SourceSettings.SOURCE_TOONKOR.equals(source)) {
+        if (SourceSettings.isCompatibilityMode(activity) || SourceSettings.SOURCE_TOONKOR.equals(source) ||
+                SourceSettings.SOURCE_FUNBE.equals(source)) {
             settings.setUserAgentString(ConnectionCompatibility.webViewUserAgent(activity));
         } else if (!SourceSettings.SOURCE_NAVER.equals(source)) {
             settings.setUserAgentString(JoatoonApi.USER_AGENT);
         }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+        if (SourceSettings.SOURCE_TOONKOR.equals(source) ||
+                SourceSettings.SOURCE_FUNBE.equals(source)) {
             webView.addJavascriptInterface(new ToonkorMetadataBridge(), "ToonkorMetadata");
         }
 
@@ -186,7 +188,8 @@ public final class NaverChannelView extends FrameLayout {
                     clearHistoryOnNextPage = false;
                 }
                 updateActionButtons();
-                if (SourceSettings.SOURCE_TOONKOR.equals(source)) collectToonkorMetadata(view);
+                if (SourceSettings.SOURCE_TOONKOR.equals(source) ||
+                        SourceSettings.SOURCE_FUNBE.equals(source)) collectToonkorMetadata(view);
             }
 
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
@@ -477,6 +480,10 @@ public final class NaverChannelView extends FrameLayout {
             String path = ToonkorApi.seriesPath(url);
             return path == null ? null : SourceJobStore.keyFor(SourceSettings.SOURCE_TOONKOR, path);
         }
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) {
+            String path = FunbeApi.seriesPath(url);
+            return path == null ? null : SourceJobStore.keyFor(SourceSettings.SOURCE_FUNBE, path);
+        }
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
             try {
                 Uri uri = Uri.parse(url);
@@ -548,6 +555,12 @@ public final class NaverChannelView extends FrameLayout {
                     String slug = Uri.decode(path.substring(1));
                     SourceJobStore.register(activity, key, source, pageUrl, slug, "webtoon");
                 }
+            } else if (SourceSettings.SOURCE_FUNBE.equals(source)) {
+                String path = FunbeApi.seriesPath(pageUrl);
+                if (path != null) {
+                    String slug = Uri.decode(path.substring(1));
+                    SourceJobStore.register(activity, key, source, pageUrl, slug, "webtoon");
+                }
             }
         } catch (Exception ignored) { }
     }
@@ -583,7 +596,13 @@ public final class NaverChannelView extends FrameLayout {
         @JavascriptInterface
         public void save(String pageUrl, String title, String description,
                          String thumbnailUrl, String tags) {
-            ToonkorMetadataStore.put(activity, pageUrl, title, description, thumbnailUrl, tags);
+            String key = pageUrl;
+            if (SourceSettings.SOURCE_FUNBE.equals(source)) {
+                String path = Uri.parse(pageUrl).getEncodedPath();
+                if (path == null || path.isEmpty()) return;
+                key = "funbe:" + path;
+            }
+            ToonkorMetadataStore.put(activity, key, title, description, thumbnailUrl, tags);
         }
     }
     private String hitomiGalleryId(Uri uri) {
