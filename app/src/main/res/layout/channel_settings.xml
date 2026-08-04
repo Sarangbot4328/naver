@@ -194,6 +194,25 @@
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="사이트 주소 자동 갱신" android:textColor="@color/text_primary"
+                android:textSize="17sp" android:textStyle="bold" />
+            <Button android:id="@+id/refresh_site_addresses"
+                android:layout_width="match_parent" android:layout_height="50dp"
+                android:layout_marginTop="12dp" android:text="사이트 주소 갱신"
+                android:textAllCaps="false" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="갱신 대상: 일일툰 · 블랙툰 · 늑대닷컴 · 툰코 · 펀비\n메이저링크의 무료웹툰 목록에서 최신 주소를 확인합니다. 찾지 못한 사이트의 기존 주소는 그대로 유지합니다."
+                android:textColor="@color/text_secondary" android:textSize="13sp" />
+            <TextView android:id="@+id/site_address_update_status"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:background="@color/surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="&#xC811;&#xC18D; &#xD638;&#xD658;&#xC131;" android:textColor="@color/text_primary"
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -325,11 +344,11 @@
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/app_version" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:layout_marginTop="10dp"
-                android:text="버전 1.5.18" android:textColor="@color/text_secondary" android:textSize="14sp" />
+                android:text="버전 1.5.19" android:textColor="@color/text_secondary" android:textSize="14sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"
-                android:text="1.5.18 업데이트 · 2026-08-03\n• 다운로드 대기열에서 펀비 작업이 즉시 제거되던 문제 수정\n• 펀비 작업 키를 대기열 허용 목록에 추가\n\n1.5.17 업데이트 · 2026-08-03\n• WebView 요청 정보 일치·쿠키 자동 재시도·한글 회차 URL 인코딩 적용\n\n1.5.16 업데이트 · 2026-08-03\n• 새 웹툰 채널 ‘펀비’ 추가 (주소 직접 등록·전체 다운로드)\n• 펀비 작품 정보·회차·인코딩 이미지 추출 지원" />
+                android:text="1.5.19 업데이트 · 2026-08-04\n• 설정에서 일일툰·블랙툰·늑대닷컴·툰코·펀비 주소 자동 갱신 추가\n• 찾지 못하거나 잘못된 주소는 기존 설정을 안전하게 유지\n\n1.5.18 업데이트 · 2026-08-03\n• 다운로드 대기열에서 펀비 작업이 즉시 제거되던 문제 수정\n• 펀비 작업 키를 대기열 허용 목록에 추가\n\n1.5.17 업데이트 · 2026-08-03\n• WebView 요청 정보 일치·쿠키 자동 재시도·한글 회차 URL 인코딩 적용\n\n1.5.16 업데이트 · 2026-08-03\n• 새 웹툰 채널 ‘펀비’ 추가 (주소 직접 등록·전체 다운로드)\n• 펀비 작품 정보·회차·인코딩 이미지 추출 지원" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:textColor="@color/text_secondary"
                 android:textSize="13sp"

@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
+import java.util.Map;
+
 public final class SourceSettings {
     public static final String SOURCE_NAVER = "naver";
     public static final String SOURCE_JOATOON = "joatoon";
@@ -226,6 +228,21 @@ public final class SourceSettings {
         return setUrl(context, KEY_FUNBE_URL, raw);
     }
 
+    public static int applyAutomaticUrls(Context context, Map<String, String> urls) {
+        if (urls == null || urls.isEmpty()) return 0;
+        SharedPreferences.Editor editor = context
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
+        int applied = 0;
+        for (Map.Entry<String, String> entry : urls.entrySet()) {
+            String key = urlKeyForSource(entry.getKey());
+            String normalized = normalizeUrl(entry.getValue());
+            if (key == null || normalized == null) continue;
+            editor.putString(key, normalized);
+            applied++;
+        }
+        if (applied > 0) editor.apply();
+        return applied;
+    }
     public static String channelLabel(Context context) {
         String source = getSource(context);
         if (SOURCE_SERVER.equals(source)) return "서버";
@@ -254,6 +271,14 @@ public final class SourceSettings {
         return "https://comic.naver.com/webtoon";
     }
 
+    private static String urlKeyForSource(String source) {
+        if (SOURCE_ILILTOON.equals(source)) return KEY_ILILTOON_URL;
+        if (SOURCE_BLACKTOON.equals(source)) return KEY_BLACKTOON_URL;
+        if (SOURCE_WOLFDOT.equals(source)) return KEY_WOLFDOT_URL;
+        if (SOURCE_TOONKOR.equals(source)) return KEY_TOONKOR_URL;
+        if (SOURCE_FUNBE.equals(source)) return KEY_FUNBE_URL;
+        return null;
+    }
     private static boolean setUrl(Context context, String key, String raw) {
         String normalized = normalizeUrl(raw);
         if (normalized == null) return false;

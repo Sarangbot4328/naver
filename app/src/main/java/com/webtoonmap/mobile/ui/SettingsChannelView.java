@@ -19,15 +19,26 @@ import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.export.TransferImporter;
+import com.webtoonmap.mobile.network.SiteAddressUpdater;
 import com.webtoonmap.mobile.server.LanServerConnector;
 import com.webtoonmap.mobile.server.LanServerSettings;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class SettingsChannelView extends FrameLayout {
+    private static final String[] AUTOMATIC_ADDRESS_SOURCES = {
+            SourceSettings.SOURCE_ILILTOON,
+            SourceSettings.SOURCE_BLACKTOON,
+            SourceSettings.SOURCE_WOLFDOT,
+            SourceSettings.SOURCE_TOONKOR,
+            SourceSettings.SOURCE_FUNBE
+    };
     private final MainActivity activity;
     private final TextView version;
     private final RadioGroup sourceGroup;
@@ -51,6 +62,8 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText funbeUrl;
     private final EditText serverUrl;
     private final TextView serverConnectionStatus;
+    private final Button siteAddressUpdateButton;
+    private final TextView siteAddressUpdateStatus;
     private final CheckBox compatibilityMode;
     private final CheckBox autoAdvance;
     private final View autoAdvanceOptions;
@@ -68,10 +81,12 @@ public final class SettingsChannelView extends FrameLayout {
     private final ExecutorService importExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService cleanupExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService serverExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService addressUpdateExecutor = Executors.newSingleThreadExecutor();
     private boolean importing;
     private boolean cleaning;
     private boolean refreshing;
     private boolean connectingServer;
+    private boolean updatingSiteAddresses;
 
     public SettingsChannelView(MainActivity activity) {
         super(activity);
@@ -99,6 +114,8 @@ public final class SettingsChannelView extends FrameLayout {
         funbeUrl = findViewById(R.id.funbe_url);
         serverUrl = findViewById(R.id.server_url);
         serverConnectionStatus = findViewById(R.id.server_connection_status);
+        siteAddressUpdateButton = findViewById(R.id.refresh_site_addresses);
+        siteAddressUpdateStatus = findViewById(R.id.site_address_update_status);
         compatibilityMode = findViewById(R.id.compatibility_mode);
         autoAdvance = findViewById(R.id.auto_advance);
         autoAdvanceOptions = findViewById(R.id.auto_advance_options);
@@ -177,6 +194,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
         findViewById(R.id.save_funbe_url).setOnClickListener(v -> saveFunbeUrl());
         findViewById(R.id.save_server_url).setOnClickListener(v -> saveServerUrl());
+        siteAddressUpdateButton.setOnClickListener(v -> refreshSiteAddresses());
         importButton.setOnClickListener(v -> {
             if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
         });
@@ -399,6 +417,120 @@ public final class SettingsChannelView extends FrameLayout {
         });
     }
 
+    private void refreshSiteAddresses() {
+        if (updatingSiteAddresses) return;
+        updatingSiteAddresses = true;
+        siteAddressUpdateButton.setEnabled(false);
+        siteAddressUpdateButton.setText("주소 확인 중…");
+        siteAddressUpdateStatus.setText("메이저링크에서 최신 주소를 확인하는 중…");
+
+        addressUpdateExecutor.execute(() -> {
+            try {
+                Map<String, String> addresses = SiteAddressUpdater.fetch();
+                List<String> changed = new ArrayList<>();
+                List<String> unchanged = new ArrayList<>();
+                List<String> missing = new ArrayList<>();
+                StringBuilder details = new StringBuilder();
+
+                for (String source : AUTOMATIC_ADDRESS_SOURCES) {
+                    String name = automaticSourceName(source);
+                    String oldUrl = currentUrlForSource(source);
+                    String newUrl = addresses.get(source);
+                    if (newUrl == null) {
+                        missing.add(name);
+                        details.append("• ").append(name)
+                                .append(": 찾지 못함 · 기존 주소 유지\n");
+                    } else if (newUrl.equals(oldUrl)) {
+                        unchanged.add(name);
+                        details.append("• ").append(name)
+                                .append(": 최신 주소 유지\n");
+                    } else {
+                        changed.add(name);
+                        details.append("• ").append(name).append("\n  ")
+                                .append(oldUrl).append("\n  → ").append(newUrl).append("\n");
+                    }
+                }
+
+                int applied = SourceSettings.applyAutomaticUrls(activity, addresses);
+                if (applied == 0) {
+                    throw new IllegalStateException("저장할 수 있는 주소가 없습니다.");
+                }
+                post(() -> finishSiteAddressUpdate(changed, unchanged, missing,
+                        details.toString().trim()));
+            } catch (Exception error) {
+                String detail = error.getMessage();
+                if (detail == null || detail.trim().isEmpty()) {
+                    detail = "주소 제공 사이트에 연결하지 못했습니다.";
+                }
+                String message = detail;
+                post(() -> failSiteAddressUpdate(message));
+            }
+        });
+    }
+
+    private void finishSiteAddressUpdate(List<String> changed, List<String> unchanged,
+                                         List<String> missing, String details) {
+        updatingSiteAddresses = false;
+        siteAddressUpdateButton.setEnabled(true);
+        siteAddressUpdateButton.setText("사이트 주소 갱신");
+        ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
+        wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
+        toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        activity.applyChannelSettings();
+
+        String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 최신 " +
+                unchanged.size() + "개";
+        if (!missing.isEmpty()) summary += " · 기존 유지 " + missing.size() + "개";
+        siteAddressUpdateStatus.setText(summary);
+        new AlertDialog.Builder(activity)
+                .setTitle("사이트 주소 갱신 완료")
+                .setMessage(summary + "\n\n" + details)
+                .setPositiveButton("확인", null)
+                .show();
+        Toast.makeText(activity, summary, Toast.LENGTH_LONG).show();
+    }
+
+    private void failSiteAddressUpdate(String detail) {
+        updatingSiteAddresses = false;
+        siteAddressUpdateButton.setEnabled(true);
+        siteAddressUpdateButton.setText("사이트 주소 갱신");
+        siteAddressUpdateStatus.setText("갱신 실패 · 기존 주소를 유지했습니다.");
+        new AlertDialog.Builder(activity)
+                .setTitle("사이트 주소 갱신 실패")
+                .setMessage(detail + "\n\n기존 주소는 변경하지 않았습니다.")
+                .setPositiveButton("확인", null)
+                .show();
+    }
+
+    private String currentUrlForSource(String source) {
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
+            return SourceSettings.getIliltoonUrl(activity);
+        }
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) {
+            return SourceSettings.getBlacktoonUrl(activity);
+        }
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) {
+            return SourceSettings.getWolfdotUrl(activity);
+        }
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+            return SourceSettings.getToonkorUrl(activity);
+        }
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) {
+            return SourceSettings.getFunbeUrl(activity);
+        }
+        return "";
+    }
+
+    private String automaticSourceName(String source) {
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) return "일일툰";
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return "블랙툰";
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return "늑대닷컴";
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) return "툰코";
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) return "펀비";
+        return source;
+    }
     private void saveJoatoonUrl() {
         if (!SourceSettings.setJoatoonUrl(activity, joatoonUrl.getText().toString())) {
             Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
