@@ -172,7 +172,7 @@ public final class NaverApi {
         conn.setConnectTimeout(0);
         conn.setReadTimeout(0);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", UA);
+        conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", accept);
         if (referer != null && !referer.isEmpty()) conn.setRequestProperty("Referer", referer);
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);

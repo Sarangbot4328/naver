@@ -3,6 +3,8 @@ package com.webtoonmap.mobile.export;
 import android.content.Context;
 import android.net.Uri;
 
+import androidx.documentfile.provider.DocumentFile;
+
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
@@ -23,8 +25,12 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -63,6 +69,9 @@ public final class SeriesExporter {
         if (pending.exists() && !pending.delete()) {
             throw new IOException("이전 내보내기 임시 파일을 지울 수 없습니다.");
         }
+        if (output.exists() && !output.delete()) {
+            throw new IOException("이전 내보내기 파일을 지울 수 없습니다.");
+        }
 
         JSONArray webtoons = new JSONArray();
         int completed = 0;
@@ -76,21 +85,40 @@ public final class SeriesExporter {
                 WebtoonStorage storage = new WebtoonStorage(context, series.storageUri);
 
                 JSONArray episodeArray = new JSONArray();
+                Set<Integer> transferNumbers = new HashSet<>();
+                int fallbackNumber = 1;
                 Integer lastRead = null;
                 for (EpisodeItem episode : episodes) {
+                    int transferNumber = episode.number;
+                    if (transferNumber <= 0 || transferNumber > 5000 ||
+                            transferNumbers.contains(transferNumber)) {
+                        transferNumber = episodeNumber(episode.title);
+                    }
+                    if (transferNumber <= 0 || transferNumber > 5000 ||
+                            transferNumbers.contains(transferNumber)) {
+                        while (fallbackNumber <= 5000 && transferNumbers.contains(fallbackNumber)) {
+                            fallbackNumber++;
+                        }
+                        if (fallbackNumber > 5000) {
+                            throw new IOException("내보낼 수 있는 회차 번호가 부족합니다.");
+                        }
+                        transferNumber = fallbackNumber++;
+                    }
+                    transferNumbers.add(transferNumber);
+
                     String episodeName = String.format(Locale.US, "%03d.zip", episode.number);
                     try (InputStream in = storage.openEpisodeZip(series.titleId, episode.number)) {
                         writeEntry(zip, prefix + "episodes/" + episodeName, in);
                     }
                     JSONObject value = new JSONObject();
-                    value.put("episode_number", episode.number);
+                    value.put("episode_number", transferNumber);
                     value.put("folder_name", episodeName);
                     value.put("title", episode.title);
                     value.put("image_count", episode.imageCount);
                     value.put("viewed", episode.viewed);
                     episodeArray.put(value);
-                    if (episode.viewed && (lastRead == null || episode.number > lastRead)) {
-                        lastRead = episode.number;
+                    if (episode.viewed && (lastRead == null || transferNumber > lastRead)) {
+                        lastRead = transferNumber;
                     }
                     completed++;
                     if (progress != null) progress.onProgress(completed, totalEpisodes);
@@ -143,6 +171,7 @@ public final class SeriesExporter {
             zip.closeEntry();
         } catch (Exception error) {
             pending.delete();
+            output.delete();
             throw error;
         }
 
@@ -155,6 +184,101 @@ public final class SeriesExporter {
             throw new IOException("내보내기 파일을 완성할 수 없습니다.");
         }
         return output;
+    }
+
+    public static void saveTransferFile(Context context, File source, Uri destination)
+            throws Exception {
+        if (source == null || !source.isFile() || destination == null) {
+            throw new IOException("저장할 내보내기 파일이 없습니다.");
+        }
+        try (InputStream in = new java.io.FileInputStream(source);
+             OutputStream out = context.getContentResolver().openOutputStream(destination, "w")) {
+            if (out == null) throw new IOException("선택한 저장 위치를 열 수 없습니다.");
+            copy(in, out);
+        } catch (Exception error) {
+            try {
+                DocumentFile failed = DocumentFile.fromSingleUri(context, destination);
+                if (failed != null) failed.delete();
+            } catch (Exception ignored) { }
+            throw error;
+        }
+    }
+
+    public static void exportViewerFolders(Context context, Uri treeUri,
+                                           List<SeriesItem> seriesItems,
+                                           LibraryDatabase database,
+                                           Progress progress) throws Exception {
+        if (treeUri == null) throw new IOException("저장할 폴더를 선택하지 않았습니다.");
+        if (seriesItems == null || seriesItems.isEmpty()) {
+            throw new IOException("내보낼 작품이 없습니다.");
+        }
+        DocumentFile root = DocumentFile.fromTreeUri(context, treeUri);
+        if (root == null || !root.isDirectory() || !root.canWrite()) {
+            throw new IOException("선택한 폴더에 저장할 수 없습니다.");
+        }
+
+        int totalEpisodes = 0;
+        for (SeriesItem series : seriesItems) {
+            List<EpisodeItem> episodes = database.listEpisodes(series.titleId);
+            if (episodes.isEmpty()) {
+                throw new IOException("‘" + series.title + "’에 내보낼 회차가 없습니다.");
+            }
+            totalEpisodes += episodes.size();
+        }
+
+        int completed = 0;
+        for (SeriesItem series : seriesItems) {
+            String folderName = safeFolderName(series.title, series.titleId);
+            DocumentFile seriesDirectory = root.findFile(folderName);
+            if (seriesDirectory == null) seriesDirectory = root.createDirectory(folderName);
+            if (seriesDirectory == null || !seriesDirectory.isDirectory()) {
+                throw new IOException("‘" + folderName + "’ 폴더를 만들 수 없습니다.");
+            }
+
+            WebtoonStorage storage = new WebtoonStorage(context, series.storageUri);
+            for (EpisodeItem episode : database.listEpisodes(series.titleId)) {
+                String episodeName = String.format(Locale.US, "%03d.zip", episode.number);
+                writeViewerEpisode(context, storage, series.titleId, episode.number,
+                        seriesDirectory, episodeName);
+                completed++;
+                if (progress != null) progress.onProgress(completed, totalEpisodes);
+            }
+        }
+    }
+
+    private static void writeViewerEpisode(Context context, WebtoonStorage storage,
+                                           String titleId, int episodeNumber,
+                                           DocumentFile directory, String episodeName)
+            throws Exception {
+        String pendingName = episodeName + ".part-" + System.currentTimeMillis();
+        DocumentFile pending = directory.createFile("application/octet-stream", pendingName);
+        if (pending == null) throw new IOException(episodeName + " 임시 파일 생성 실패");
+        try (InputStream in = storage.openEpisodeZip(titleId, episodeNumber);
+             OutputStream out = context.getContentResolver().openOutputStream(pending.getUri(), "w")) {
+            if (out == null) throw new IOException(episodeName + " 저장 위치를 열 수 없습니다.");
+            copy(in, out);
+        } catch (Exception error) {
+            pending.delete();
+            throw error;
+        }
+
+        DocumentFile previous = directory.findFile(episodeName);
+        if (previous != null && !previous.delete()) {
+            pending.delete();
+            throw new IOException("기존 " + episodeName + " 파일을 교체할 수 없습니다.");
+        }
+        if (!pending.renameTo(episodeName)) {
+            pending.delete();
+            throw new IOException(episodeName + " 저장 완료 처리 실패");
+        }
+    }
+
+    private static String safeFolderName(String title, String titleId) {
+        String value = title == null ? "" : title.trim();
+        value = value.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_")
+                .replaceAll("[. ]+$", "").trim();
+        if (value.isEmpty()) value = titleId == null ? "웹툰" : titleId;
+        return value.length() > 80 ? value.substring(0, 80) : value;
     }
 
     private static boolean writeThumbnail(Context context, ZipOutputStream zip, String prefix,
@@ -184,6 +308,12 @@ public final class SeriesExporter {
         if (value.startsWith("joatoon_")) return "joatoon";
         if (value.startsWith("manhwabang_")) return "manhwabang";
         if (value.startsWith("ililtoon_")) return "ililtoon";
+        if (value.startsWith("blacktoon_")) return "blacktoon";
+        if (value.startsWith("wolfdot_")) return "wolfdot";
+        if (value.startsWith("hitomi_")) return "hitomi";
+        if (value.startsWith("toonkor_")) return "toonkor";
+        if (value.startsWith("funbe_")) return "funbe";
+        if (value.startsWith("newtoki_")) return "newtoki";
         return "naver";
     }
 
@@ -191,6 +321,12 @@ public final class SeriesExporter {
         if (SourceSettings.SOURCE_JOATOON.equals(source)) return SourceSettings.getJoatoonUrl(context);
         if (SourceSettings.SOURCE_MANHWABANG.equals(source)) return SourceSettings.getManhwabangUrl(context);
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) return SourceSettings.getIliltoonUrl(context);
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return SourceSettings.getBlacktoonUrl(context);
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return SourceSettings.getWolfdotUrl(context);
+        if (SourceSettings.SOURCE_HITOMI.equals(source)) return SourceSettings.getHitomiUrl(context);
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) return SourceSettings.getToonkorUrl(context);
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) return SourceSettings.getFunbeUrl(context);
+        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return SourceSettings.getNewtokiUrl(context);
         return "https://comic.naver.com";
     }
 
@@ -207,6 +343,19 @@ public final class SeriesExporter {
         zip.putNextEntry(new ZipEntry(name));
         copy(input, zip);
         zip.closeEntry();
+    }
+
+    private static int episodeNumber(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        Matcher matcher = Pattern.compile("(\\d{1,4})\\s*(?:화|회)").matcher(text);
+        int result = 0;
+        while (matcher.find()) result = Integer.parseInt(matcher.group(1));
+        if (result <= 0) {
+            Matcher prefix = Pattern.compile("^\\s*0*(\\d{1,4})\\s*(?:[-–—.:]|$)")
+                    .matcher(text);
+            if (prefix.find()) result = Integer.parseInt(prefix.group(1));
+        }
+        return result > 0 && result <= 5000 ? result : 0;
     }
 
     private static void copy(InputStream input, OutputStream output) throws Exception {

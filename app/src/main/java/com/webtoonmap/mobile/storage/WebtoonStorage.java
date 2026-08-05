@@ -5,6 +5,9 @@ import android.net.Uri;
 
 import androidx.documentfile.provider.DocumentFile;
 
+import com.webtoonmap.mobile.data.LibraryDatabase;
+import com.webtoonmap.mobile.data.SeriesItem;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -138,28 +141,33 @@ public final class WebtoonStorage {
         return file != null && file.isFile();
     }
 
-    public void cleanupIncomplete(String titleId) throws IOException {
+    public int cleanupIncomplete(String titleId) throws IOException {
+        int deleted = 0;
         if (treeUri == null) {
             File dir = defaultSeriesDir(titleId);
             File[] children = dir.listFiles();
-            if (children == null) return;
+            if (children == null) return 0;
             for (File child : children) {
-                if (isIncompleteArtifact(child.getName(), child.isDirectory()) &&
-                        !deleteRecursively(child)) {
+                if (!isIncompleteArtifact(child.getName(), child.isDirectory())) continue;
+                if (!deleteRecursively(child)) {
                     throw new IOException("미완성 회차 파일 정리 실패: " + child.getName());
                 }
+                deleted++;
             }
-            return;
+            return deleted;
         }
 
         DocumentFile dir = externalSeriesDir(titleId, false);
-        if (dir == null) return;
+        if (dir == null) return 0;
         for (DocumentFile child : dir.listFiles()) {
             String name = child.getName();
-            if (name != null && isIncompleteArtifact(name, child.isDirectory()) && !child.delete()) {
+            if (name == null || !isIncompleteArtifact(name, child.isDirectory())) continue;
+            if (!child.delete()) {
                 throw new IOException("미완성 회차 파일 정리 실패: " + name);
             }
+            deleted++;
         }
+        return deleted;
     }
 
     public boolean deleteSeries(String titleId) {
@@ -211,6 +219,68 @@ public final class WebtoonStorage {
             }
             out.write(buffer, 0, count);
         }
+    }
+
+    public static final class CleanupResult {
+        public final int deletedFiles;
+        public final int failedPaths;
+
+        CleanupResult(int deletedFiles, int failedPaths) {
+            this.deletedFiles = deletedFiles;
+            this.failedPaths = failedPaths;
+        }
+    }
+
+    public static CleanupResult cleanupTemporaryFiles(Context context) {
+        Context appContext = context.getApplicationContext();
+        int deleted = 0;
+        int failed = 0;
+        String[] cacheDirectories = {
+                "exports", "download-zips", "imports", "import-stage", "viewer"
+        };
+        for (String name : cacheDirectories) {
+            File directory = new File(appContext.getCacheDir(), name);
+            int fileCount = countFiles(directory);
+            if (deleteRecursively(directory)) deleted += fileCount;
+            else failed++;
+        }
+
+        File webtoonRoot = new File(appContext.getFilesDir(), "webtoons");
+        File[] seriesDirectories = webtoonRoot.listFiles(File::isDirectory);
+        if (seriesDirectories != null) {
+            WebtoonStorage internal = new WebtoonStorage(appContext, null);
+            for (File directory : seriesDirectories) {
+                try {
+                    deleted += internal.cleanupIncomplete(directory.getName());
+                } catch (Exception ignored) {
+                    failed++;
+                }
+            }
+        }
+
+        try {
+            for (SeriesItem item : LibraryDatabase.get(appContext).listSeries()) {
+                if (item.storageUri == null || item.storageUri.isEmpty()) continue;
+                try {
+                    deleted += new WebtoonStorage(appContext, item.storageUri)
+                            .cleanupIncomplete(item.titleId);
+                } catch (Exception ignored) {
+                    failed++;
+                }
+            }
+        } catch (Exception ignored) {
+            failed++;
+        }
+        return new CleanupResult(deleted, failed);
+    }
+
+    private static int countFiles(File file) {
+        if (file == null || !file.exists()) return 0;
+        if (file.isFile()) return 1;
+        int count = 0;
+        File[] children = file.listFiles();
+        if (children != null) for (File child : children) count += countFiles(child);
+        return count;
     }
 
     public static boolean deleteRecursively(File file) {

@@ -20,7 +20,7 @@ public final class OptionalImageDownloader {
         connection.setConnectTimeout(12_000);
         connection.setReadTimeout(15_000);
         connection.setInstanceFollowRedirects(true);
-        connection.setRequestProperty("User-Agent", USER_AGENT);
+        connection.setRequestProperty("User-Agent", ConnectionCompatibility.requestUserAgent());
         connection.setRequestProperty("Accept", "image/*,*/*;q=0.8");
         if (referer != null && !referer.isEmpty()) {
             connection.setRequestProperty("Referer", referer);

@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 
 public final class TelegramActivationClient {
     private static final Pattern COMMAND = Pattern.compile(
-            "^/우동모바일\\s+(.+?)\\s+[\\(（](.+?)[\\)）]\\s*$");
+            "^/웹툰모바일\\s+(.+?)\\s+[\\(（](.+?)[\\)）]\\s*$");
 
     private static final String BOT_TOKEN = BuildConfig.TELEGRAM_BOT_TOKEN.trim();
     private static final String ADMIN_CHAT_ID = BuildConfig.TELEGRAM_ADMIN_CHAT_ID.trim();
@@ -65,7 +65,7 @@ public final class TelegramActivationClient {
 
     public void notifyActivated(long replyToMessageId) {
         executor.execute(() -> sendMessage(
-                "✅ [우동모바일 · " + userName + "] 영구 활성화되었습니다.",
+                "✅ [웹툰모바일 · " + userName + "] 영구 활성화되었습니다.",
                 replyToMessageId));
     }
 
@@ -116,28 +116,28 @@ public final class TelegramActivationClient {
         if (chat == null || !ADMIN_CHAT_ID.equals(
                 String.valueOf(chat.optLong("id")))) return;
         String text = message.optString("text", "").trim();
-        if (!text.startsWith("/우동모바일")) return;
+        if (!text.startsWith("/웹툰모바일")) return;
 
         long messageId = message.optLong("message_id", 0L);
         Matcher matcher = COMMAND.matcher(text);
         if (!matcher.matches()) {
-            sendMessage("형식이 올바르지 않습니다. 예: /우동모바일 " + userName + " (1234)", messageId);
+            sendMessage("형식이 올바르지 않습니다. 예: /웹툰모바일 " + userName + " (1234)", messageId);
             return;
         }
         String target = ActivationStore.normalizeName(matcher.group(1));
         String code = matcher.group(2).trim();
         if (code.isEmpty()) {
-            sendMessage("활성화 코드가 비어 있습니다. 예: /우동모바일 " + userName + " (1234)", messageId);
+            sendMessage("활성화 코드가 비어 있습니다. 예: /웹툰모바일 " + userName + " (1234)", messageId);
             return;
         }
         if (!target.equals(userName)) {
             sendMessage("이 기기의 등록 사용자명은 「" + userName + "」입니다. (요청: 「" + target + "」)\n"
-                    + "이 기기를 활성화하려면 /우동모바일 " + userName + " (" + code + ") 를 보내세요.", messageId);
+                    + "이 기기를 활성화하려면 /웹툰모바일 " + userName + " (" + code + ") 를 보내세요.", messageId);
             return;
         }
 
         ActivationStore.setPendingCode(context, code, messageId);
-        sendMessage("🔒 [우동모바일 · " + userName + "] 코드 입력 대기 중…", messageId);
+        sendMessage("🔒 [웹툰모바일 · " + userName + "] 코드 입력 대기 중…", messageId);
         listener.onPendingCode();
     }
 
@@ -183,7 +183,7 @@ public final class TelegramActivationClient {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(35000);
         connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", "DdmjSpaceMobile/1.0");
+        connection.setRequestProperty("User-Agent", "WebtoonMapMobile/1.1");
         return connection;
     }
 
