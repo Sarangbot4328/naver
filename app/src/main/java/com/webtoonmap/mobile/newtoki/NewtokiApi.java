@@ -84,7 +84,15 @@ public final class NewtokiApi {
         title = title.replaceFirst("(?i)\\s*[-|]\\s*(?:뉴토끼|NEWTOKI).*$", "").trim();
         if (title.isEmpty()) title = "뉴토끼 웹툰";
         String description = meta(first, "og:description");
-        String thumbnail = absoluteUrl(firstPageUrl, meta(first, "og:image"));
+        Element cover = first.selectFirst(
+                ".view-content1 img[itemprop=image]," +
+                ".view-content1 img[src*='/cover/']," +
+                "a.view_image img[src*='/cover/'],img.img-tag[src*='/cover/']");
+        String coverValue = cover == null ? null : firstNonEmpty(
+                cover.attr("content"), cover.attr("data-src"),
+                cover.attr("data-original"), cover.attr("src"));
+        String thumbnail = absoluteUrl(firstPageUrl, coverValue);
+        if (thumbnail == null) thumbnail = absoluteUrl(firstPageUrl, meta(first, "og:image"));
 
         LinkedHashSet<String> tagSet = new LinkedHashSet<>();
         String keywords = meta(first, "keywords");
@@ -194,6 +202,49 @@ public final class NewtokiApi {
         }
     }
 
+    public static byte[] downloadThumbnailBytes(String url, String pageUrl, String cookie)
+            throws Exception {
+        String originReferer = origin(pageUrl);
+        if (!originReferer.endsWith("/")) originReferer += "/";
+        String[] referers = {originReferer, pageUrl, null};
+        boolean sameHost = sameHost(url, pageUrl);
+        String[] cookies = sameHost
+                ? new String[]{cookie, null} : new String[]{null, cookie};
+        Exception lastError = null;
+        for (String referer : referers) {
+            for (String requestCookie : cookies) {
+                HttpURLConnection connection = null;
+                try {
+                    connection = open(url, referer, requestCookie,
+                            "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+                    connection.setRequestProperty("Cache-Control", "no-cache");
+                    connection.setRequestProperty("Pragma", "no-cache");
+                    connection.setRequestProperty("Sec-Fetch-Dest", "image");
+                    connection.setRequestProperty("Sec-Fetch-Mode", "no-cors");
+                    connection.setRequestProperty("Sec-Fetch-Site",
+                            sameHost ? "same-origin" : "cross-site");
+                    int code = connection.getResponseCode();
+                    if (code < 200 || code >= 300) {
+                        throw new IOException("뉴토끼 표지 HTTP " + code);
+                    }
+                    byte[] bytes = readAll(connection.getInputStream(),
+                            "뉴토끼 표지 다운로드 중단");
+                    if (!isImageBytes(bytes)) {
+                        throw new IOException(
+                                "뉴토끼 표지 CDN이 이미지가 아닌 응답을 반환했습니다.");
+                    }
+                    return bytes;
+                } catch (Exception error) {
+                    lastError = error;
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+            }
+        }
+        if (lastError != null) throw lastError;
+        throw new IOException("뉴토끼 표지를 다운로드하지 못했습니다.");
+    }
+
     private static Document fetchDocument(String url, String referer, String cookie)
             throws Exception {
         HttpURLConnection connection = open(url, referer, cookie,
@@ -262,6 +313,29 @@ public final class NewtokiApi {
 
     private static boolean isImageUrl(String url) {
         return url != null && url.matches("(?i)^https?://.+\\.(?:jpe?g|png|webp)(?:[?#].*)?$");
+    }
+
+    private static boolean isImageBytes(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) return false;
+        boolean jpeg = (bytes[0] & 0xff) == 0xff && (bytes[1] & 0xff) == 0xd8 &&
+                (bytes[2] & 0xff) == 0xff;
+        boolean png = (bytes[0] & 0xff) == 0x89 && bytes[1] == 0x50 &&
+                bytes[2] == 0x4e && bytes[3] == 0x47;
+        boolean gif = bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F';
+        boolean webp = bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' &&
+                bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' &&
+                bytes[10] == 'B' && bytes[11] == 'P';
+        return jpeg || png || gif || webp;
+    }
+
+    private static boolean sameHost(String first, String second) {
+        try {
+            String firstHost = new URL(first).getHost();
+            String secondHost = new URL(second).getHost();
+            return firstHost != null && firstHost.equalsIgnoreCase(secondHost);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static String firstNonEmpty(String... values) {

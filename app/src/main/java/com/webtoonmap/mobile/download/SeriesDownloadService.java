@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.BitmapFactory;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -394,6 +395,11 @@ public final class SeriesDownloadService extends Service {
         List<String> fetchImages(String episodeUrl) throws Exception;
         byte[] downloadBytes(String imageUrl, String referer) throws Exception;
 
+        default byte[] downloadThumbnailBytes(String imageUrl, String pageUrl)
+                throws Exception {
+            return downloadBytes(imageUrl, pageUrl);
+        }
+
         default int maxEpisodeAttempts() {
             return 1;
         }
@@ -666,6 +672,12 @@ public final class SeriesDownloadService extends Service {
                         return NewtokiApi.downloadBytes(imageUrl, referer, currentCookie());
                     }
 
+                    @Override public byte[] downloadThumbnailBytes(
+                            String imageUrl, String referer) throws Exception {
+                        return NewtokiApi.downloadThumbnailBytes(
+                                imageUrl, referer, currentCookie());
+                    }
+
                     @Override public int maxEpisodeAttempts() {
                         return 4;
                     }
@@ -896,15 +908,28 @@ public final class SeriesDownloadService extends Service {
                                          ExternalSiteApi api) {
         if (thumbnailUrl == null || thumbnailUrl.isEmpty()) return null;
         try {
-            return storage.writeThumbnail(titleId,
-                    api.downloadBytes(thumbnailUrl, pageUrl));
+            byte[] bytes = api.downloadThumbnailBytes(thumbnailUrl, pageUrl);
+            if (!isValidThumbnail(bytes)) {
+                throw new IllegalStateException("썸네일 이미지 형식 오류");
+            }
+            return storage.writeThumbnail(titleId, bytes);
         } catch (Exception ignored) { }
         try {
-            return storage.writeThumbnail(titleId,
-                    OptionalImageDownloader.download(thumbnailUrl, pageUrl, cookie));
+            byte[] bytes = OptionalImageDownloader.download(
+                    thumbnailUrl, pageUrl, cookie);
+            if (!isValidThumbnail(bytes)) return null;
+            return storage.writeThumbnail(titleId, bytes);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static boolean isValidThumbnail(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) return false;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+        return options.outWidth > 0 && options.outHeight > 0;
     }
 
     private void checkCancelled() throws InterruptedException {
