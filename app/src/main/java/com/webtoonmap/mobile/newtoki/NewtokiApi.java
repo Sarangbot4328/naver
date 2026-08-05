@@ -1,6 +1,7 @@
 package com.webtoonmap.mobile.newtoki;
 
 import android.net.Uri;
+import android.util.Base64;
 
 import com.webtoonmap.mobile.network.ConnectionCompatibility;
 
@@ -135,12 +136,8 @@ public final class NewtokiApi {
             throws Exception {
         Document document = fetchDocument(episodeUrl, episodeUrl, cookie);
         LinkedHashSet<String> images = new LinkedHashSet<>();
-        for (Element image : document.select("#mana_img img")) {
-            String raw = firstNonEmpty(image.attr("data-src"), image.attr("data-original"),
-                    image.attr("content"), image.attr("src"));
-            String url = absoluteUrl(episodeUrl, raw);
-            if (isImageUrl(url)) images.add(url);
-        }
+        collectImages(document, "#mana_img", episodeUrl, images);
+        if (images.isEmpty()) collectEncodedManaImages(document, episodeUrl, images);
         if (images.isEmpty()) {
             for (Element anchor : document.select("#mana_img a.view_image[href*='img=']")) {
                 String url = queryParameter(anchor.attr("abs:href"), "img");
@@ -150,6 +147,37 @@ public final class NewtokiApi {
         }
         if (images.isEmpty()) throw new IOException("뉴토끼 회차 이미지를 찾지 못했습니다.");
         return new ArrayList<>(images);
+    }
+
+    private static void collectEncodedManaImages(Document document, String episodeUrl,
+                                                  LinkedHashSet<String> images) {
+        Pattern pattern = Pattern.compile(
+                "var\\s+mana_img\\s*=\\s*(['\\\"])([A-Za-z0-9+/=\\r\\n]+)\\1");
+        for (Element script : document.select("script:not([src])")) {
+            Matcher matcher = pattern.matcher(script.data());
+            if (!matcher.find()) {
+                matcher = pattern.matcher(script.html());
+                if (!matcher.find()) continue;
+            }
+            try {
+                byte[] decoded = Base64.decode(matcher.group(2), Base64.DEFAULT);
+                Document fragment = Jsoup.parseBodyFragment(
+                        new String(decoded, StandardCharsets.UTF_8), episodeUrl);
+                collectImages(fragment, "", episodeUrl, images);
+                if (!images.isEmpty()) return;
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private static void collectImages(Document document, String rootSelector, String episodeUrl,
+                                      LinkedHashSet<String> images) {
+        String imageSelector = rootSelector.isEmpty() ? "img" : rootSelector + " img";
+        for (Element image : document.select(imageSelector)) {
+            String raw = firstNonEmpty(image.attr("data-src"), image.attr("data-original"),
+                    image.attr("content"), image.attr("src"));
+            String url = absoluteUrl(episodeUrl, raw);
+            if (isImageUrl(url)) images.add(url);
+        }
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie)
