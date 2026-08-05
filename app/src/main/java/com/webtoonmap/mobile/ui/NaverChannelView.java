@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.view.Gravity;
@@ -62,6 +63,7 @@ public final class NaverChannelView extends FrameLayout {
     private boolean receiverRegistered;
     private boolean stopping;
     private boolean connectionErrorDialogShowing;
+    private boolean newtokiSeriesPage;
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (intent.getBooleanExtra(SeriesDownloadService.EXTRA_DONE, false)) stopping = false;
@@ -147,7 +149,8 @@ public final class NaverChannelView extends FrameLayout {
         settings.setBuiltInZoomControls(false);
         ConnectionCompatibility.configure(activity);
         if (SourceSettings.isCompatibilityMode(activity) || SourceSettings.SOURCE_TOONKOR.equals(source) ||
-                SourceSettings.SOURCE_FUNBE.equals(source)) {
+                SourceSettings.SOURCE_FUNBE.equals(source) ||
+                SourceSettings.SOURCE_NEWTOKI.equals(source)) {
             settings.setUserAgentString(ConnectionCompatibility.webViewUserAgent(activity));
         } else if (!SourceSettings.SOURCE_NAVER.equals(source)) {
             settings.setUserAgentString(JoatoonApi.USER_AGENT);
@@ -181,6 +184,12 @@ public final class NaverChannelView extends FrameLayout {
                 return true;
             }
 
+            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                if (SourceSettings.SOURCE_NEWTOKI.equals(source)) newtokiSeriesPage = false;
+                updateActionButtons();
+            }
+
             @Override public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 if (clearHistoryOnNextPage) {
@@ -188,6 +197,7 @@ public final class NaverChannelView extends FrameLayout {
                     clearHistoryOnNextPage = false;
                 }
                 updateActionButtons();
+                if (SourceSettings.SOURCE_NEWTOKI.equals(source)) detectNewtokiSeriesPage(view, url);
                 if (SourceSettings.SOURCE_TOONKOR.equals(source) ||
                         SourceSettings.SOURCE_FUNBE.equals(source)) collectToonkorMetadata(view);
             }
@@ -417,6 +427,18 @@ public final class NaverChannelView extends FrameLayout {
         Toast.makeText(activity, "현재 다운로드와 대기열 전체를 중단합니다.", Toast.LENGTH_SHORT).show();
     }
 
+    private void detectNewtokiSeriesPage(WebView view, String finishedUrl) {
+        newtokiSeriesPage = false;
+        String script = "(function(){return !!document.querySelector('.serial-list a.item-subject[href]')" +
+                " && !document.querySelector('#mana_img');})()";
+        view.evaluateJavascript(script, result -> {
+            if (!SourceSettings.SOURCE_NEWTOKI.equals(source)) return;
+            String currentUrl = view.getUrl();
+            if (currentUrl == null || finishedUrl == null || !currentUrl.equals(finishedUrl)) return;
+            newtokiSeriesPage = "true".equalsIgnoreCase(result);
+            updateActionButtons();
+        });
+    }
     private String seriesKeyFrom(String url) {
         if (url == null) return null;
         if (SourceSettings.SOURCE_JOATOON.equals(source)) {
@@ -483,6 +505,21 @@ public final class NaverChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_FUNBE.equals(source)) {
             String path = FunbeApi.seriesPath(url);
             return path == null ? null : SourceJobStore.keyFor(SourceSettings.SOURCE_FUNBE, path);
+        }
+        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+            if (!newtokiSeriesPage) return null;
+            try {
+                Uri uri = Uri.parse(url);
+                if (!"/bbs/board.php".equalsIgnoreCase(uri.getPath())) return null;
+                String table = uri.getQueryParameter("bo_table");
+                String id = uri.getQueryParameter("wr_id");
+                if (!("fafa".equalsIgnoreCase(table) || "fafaend".equalsIgnoreCase(table)) ||
+                        id == null || !id.matches("\\d+")) return null;
+                return SourceJobStore.keyFor(SourceSettings.SOURCE_NEWTOKI,
+                        table.toLowerCase() + ":" + id);
+            } catch (Exception ignored) {
+                return null;
+            }
         }
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
             try {
@@ -560,6 +597,14 @@ public final class NaverChannelView extends FrameLayout {
                 if (path != null) {
                     String slug = Uri.decode(path.substring(1));
                     SourceJobStore.register(activity, key, source, pageUrl, slug, "webtoon");
+                }
+            } else if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+                String table = uri.getQueryParameter("bo_table");
+                String id = uri.getQueryParameter("wr_id");
+                if (id != null && id.matches("\\d+") &&
+                        ("fafa".equalsIgnoreCase(table) || "fafaend".equalsIgnoreCase(table))) {
+                    SourceJobStore.register(activity, key, source, pageUrl, id,
+                            table.toLowerCase());
                 }
             }
         } catch (Exception ignored) { }

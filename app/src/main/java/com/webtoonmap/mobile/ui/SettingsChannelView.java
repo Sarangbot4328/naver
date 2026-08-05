@@ -51,6 +51,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final View hitomiAddressBox;
     private final View toonkorAddressBox;
     private final View funbeAddressBox;
+    private final View newtokiAddressBox;
     private final View serverAddressBox;
     private final EditText joatoonUrl;
     private final EditText manhwabangUrl;
@@ -60,6 +61,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText hitomiUrl;
     private final EditText toonkorUrl;
     private final EditText funbeUrl;
+    private final EditText newtokiUrl;
     private final EditText serverUrl;
     private final TextView serverConnectionStatus;
     private final Button siteAddressUpdateButton;
@@ -103,6 +105,7 @@ public final class SettingsChannelView extends FrameLayout {
         hitomiAddressBox = findViewById(R.id.hitomi_address_box);
         toonkorAddressBox = findViewById(R.id.toonkor_address_box);
         funbeAddressBox = findViewById(R.id.funbe_address_box);
+        newtokiAddressBox = findViewById(R.id.newtoki_address_box);
         serverAddressBox = findViewById(R.id.server_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
         manhwabangUrl = findViewById(R.id.manhwabang_url);
@@ -112,6 +115,7 @@ public final class SettingsChannelView extends FrameLayout {
         hitomiUrl = findViewById(R.id.hitomi_url);
         toonkorUrl = findViewById(R.id.toonkor_url);
         funbeUrl = findViewById(R.id.funbe_url);
+        newtokiUrl = findViewById(R.id.newtoki_url);
         serverUrl = findViewById(R.id.server_url);
         serverConnectionStatus = findViewById(R.id.server_connection_status);
         siteAddressUpdateButton = findViewById(R.id.refresh_site_addresses);
@@ -193,6 +197,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_hitomi_url).setOnClickListener(v -> saveHitomiUrl());
         findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
         findViewById(R.id.save_funbe_url).setOnClickListener(v -> saveFunbeUrl());
+        findViewById(R.id.save_newtoki_url).setOnClickListener(v -> saveNewtokiUrl());
         findViewById(R.id.save_server_url).setOnClickListener(v -> saveServerUrl());
         siteAddressUpdateButton.setOnClickListener(v -> refreshSiteAddresses());
         importButton.setOnClickListener(v -> {
@@ -220,6 +225,7 @@ public final class SettingsChannelView extends FrameLayout {
         hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
         funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
         String host = LanServerSettings.getHost(activity);
         int port = LanServerSettings.getPort(activity);
         if (host != null && !host.isEmpty()) {
@@ -478,6 +484,7 @@ public final class SettingsChannelView extends FrameLayout {
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
         funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
         activity.applyChannelSettings();
 
         String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 최신 " +
@@ -612,6 +619,16 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "\uD380\uBE44 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
     }
 
+    private void saveNewtokiUrl() {
+        if (!SourceSettings.setNewtokiUrl(activity, newtokiUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "뉴토끼 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
     private void saveServerUrl() {
         if (connectingServer) return;
         String raw = serverUrl.getText().toString().trim();
@@ -684,6 +701,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_hitomi) return SourceSettings.SOURCE_HITOMI;
         if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
         if (checkedId == R.id.source_funbe) return SourceSettings.SOURCE_FUNBE;
+        if (checkedId == R.id.source_newtoki) return SourceSettings.SOURCE_NEWTOKI;
         if (checkedId == R.id.source_server) return SourceSettings.SOURCE_SERVER;
         return SourceSettings.SOURCE_NAVER;
     }
@@ -697,6 +715,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_HITOMI.equals(source)) return R.id.source_hitomi;
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
         if (SourceSettings.SOURCE_FUNBE.equals(source)) return R.id.source_funbe;
+        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return R.id.source_newtoki;
         if (SourceSettings.SOURCE_SERVER.equals(source)) return R.id.source_server;
         return R.id.source_naver;
     }
@@ -710,6 +729,7 @@ public final class SettingsChannelView extends FrameLayout {
         hitomiAddressBox.setVisibility(SourceSettings.SOURCE_HITOMI.equals(source) ? VISIBLE : GONE);
         toonkorAddressBox.setVisibility(SourceSettings.SOURCE_TOONKOR.equals(source) ? VISIBLE : GONE);
         funbeAddressBox.setVisibility(SourceSettings.SOURCE_FUNBE.equals(source) ? VISIBLE : GONE);
+        newtokiAddressBox.setVisibility(SourceSettings.SOURCE_NEWTOKI.equals(source) ? VISIBLE : GONE);
         serverAddressBox.setVisibility(SourceSettings.SOURCE_SERVER.equals(source) ? VISIBLE : GONE);
     }
 

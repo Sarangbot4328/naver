@@ -29,6 +29,7 @@ import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.naver.NaverApi;
 import com.webtoonmap.mobile.network.NetworkRetry;
 import com.webtoonmap.mobile.network.OptionalImageDownloader;
+import com.webtoonmap.mobile.newtoki.NewtokiApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
@@ -222,6 +223,8 @@ public final class SeriesDownloadService extends Service {
             downloadToonkor(titleId);
         } else if (FunbeApi.isSeriesKey(titleId)) {
             downloadFunbe(titleId);
+        } else if (NewtokiApi.isSeriesKey(titleId)) {
+            downloadNewtoki(titleId);
         } else if (HitomiApi.isSeriesKey(titleId)) {
             downloadHitomi(titleId);
         } else if (JoatoonApi.isSeriesKey(titleId)) {
@@ -630,6 +633,48 @@ public final class SeriesDownloadService extends Service {
                 });
     }
 
+    private void downloadNewtoki(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        if (job == null) {
+            throw new IllegalStateException("뉴토끼 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
+        String baseUrl = SourceSettings.getNewtokiUrl(this);
+        String pageUrl = job.pageUrl(baseUrl);
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("뉴토끼 작품 정보를 불러오는 중… · 대기열 " +
+                DownloadQueue.size(this) + "개", 0, 0);
+        NewtokiApi.SeriesInfo info = NewtokiApi.fetchSeriesInfo(pageUrl, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        for (NewtokiApi.EpisodeMeta episode : info.episodes) {
+            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
+        }
+        downloadExternalSeries(titleId, "뉴토끼", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
+                    private String currentCookie() {
+                        String current = CookieManager.getInstance().getCookie(baseUrl);
+                        return current == null || current.isEmpty() ? cookie : current;
+                    }
+
+                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
+                        return NewtokiApi.fetchEpisodeImages(episodeUrl, currentCookie());
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer)
+                            throws Exception {
+                        return NewtokiApi.downloadBytes(imageUrl, referer, currentCookie());
+                    }
+
+                    @Override public int maxEpisodeAttempts() {
+                        return 4;
+                    }
+
+                    @Override public long retryDelayMs(int failedAttempt) {
+                        return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
+                    }
+                });
+    }
     private void downloadHitomi(String titleId) throws Exception {
         SourceJobStore.Job job = SourceJobStore.get(this, titleId);
         String baseUrl = SourceSettings.getHitomiUrl(this);
