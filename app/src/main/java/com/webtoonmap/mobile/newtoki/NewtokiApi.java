@@ -72,6 +72,11 @@ public final class NewtokiApi {
         return key != null && key.matches(KEY_PREFIX + "[0-9a-f]+");
     }
 
+    public static boolean isSeriesTable(String table) {
+        return table != null && table.matches(
+                "(?i)^(?:fafa|fafa19|fafabl|fafaend|fafaend19|fafaendbl)$");
+    }
+
     public static SeriesInfo fetchSeriesInfo(String pageUrl, String cookie) throws Exception {
         String firstPageUrl = seriesPageUrl(pageUrl, 1);
         Document first = fetchDocument(firstPageUrl, origin(firstPageUrl), cookie);
@@ -101,7 +106,10 @@ public final class NewtokiApi {
             if (!value.isEmpty() && value.length() <= 30) tagSet.add(value);
         }
         String table = queryParameter(firstPageUrl, "bo_table");
-        tagSet.add("fafaend".equalsIgnoreCase(table) ? "완결웹툰" : "웹툰");
+        String normalizedTable = table == null ? "" : table.toLowerCase();
+        tagSet.add(normalizedTable.startsWith("fafaend") ? "완결웹툰" : "연재웹툰");
+        if (normalizedTable.endsWith("19")) tagSet.add("성인");
+        if (normalizedTable.endsWith("bl")) tagSet.add("BL/GL");
 
         Map<String, RawEpisode> unique = new LinkedHashMap<>();
         collectEpisodes(first, unique);

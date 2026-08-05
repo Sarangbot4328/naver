@@ -517,7 +517,7 @@ public final class NaverChannelView extends FrameLayout {
                 if (!"/bbs/board.php".equalsIgnoreCase(uri.getPath())) return null;
                 String table = uri.getQueryParameter("bo_table");
                 String id = uri.getQueryParameter("wr_id");
-                if (!("fafa".equalsIgnoreCase(table) || "fafaend".equalsIgnoreCase(table)) ||
+                if (!NewtokiApi.isSeriesTable(table) ||
                         id == null || !id.matches("\\d+")) return null;
                 return SourceJobStore.keyFor(SourceSettings.SOURCE_NEWTOKI,
                         table.toLowerCase() + ":" + id);
@@ -606,7 +606,7 @@ public final class NaverChannelView extends FrameLayout {
                 String table = uri.getQueryParameter("bo_table");
                 String id = uri.getQueryParameter("wr_id");
                 if (id != null && id.matches("\\d+") &&
-                        ("fafa".equalsIgnoreCase(table) || "fafaend".equalsIgnoreCase(table))) {
+                        NewtokiApi.isSeriesTable(table)) {
                     SourceJobStore.register(activity, key, source, pageUrl, id,
                             table.toLowerCase());
                 }
