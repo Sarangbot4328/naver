@@ -17,6 +17,7 @@ public final class SourceSettings {
     public static final String SOURCE_TOONKOR = "toonkor";
     public static final String SOURCE_FUNBE = "funbe";
     public static final String SOURCE_NEWTOKI = "newtoki";
+    public static final String SOURCE_SITE_ADDRESSES = "site_addresses";
     public static final String SOURCE_SERVER = "server";
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
     public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
@@ -27,6 +28,8 @@ public final class SourceSettings {
     public static final String DEFAULT_TOONKOR_URL = "https://tkor137.com";
     public static final String DEFAULT_FUNBE_URL = "https://funbe662.com";
     public static final String DEFAULT_NEWTOKI_URL = "https://newto26.com";
+    public static final String SITE_ADDRESSES_URL =
+            "https://majorlink2.com/%EC%9B%B9%ED%88%B0";
     public static final String VIEW_MODE_SCROLL = "scroll";
     public static final String VIEW_MODE_PAGE = "page";
     public static final String VIEW_MODE_PAGE_FIT = "page_fit";
@@ -136,8 +139,13 @@ public final class SourceSettings {
     }
 
     public static String getSource(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_SOURCE, SOURCE_NAVER);
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String source = preferences.getString(KEY_SOURCE, SOURCE_NAVER);
+        if (SOURCE_MANHWABANG.equals(source)) {
+            preferences.edit().putString(KEY_SOURCE, SOURCE_NAVER).apply();
+            return SOURCE_NAVER;
+        }
+        return isKnownSource(source) ? source : SOURCE_NAVER;
     }
 
     public static boolean isJoatoon(Context context) {
@@ -266,6 +274,7 @@ public final class SourceSettings {
         if (SOURCE_TOONKOR.equals(source)) return "\uD230\uCF54";
         if (SOURCE_FUNBE.equals(source)) return "\uD380\uBE44";
         if (SOURCE_NEWTOKI.equals(source)) return "뉴토끼";
+        if (SOURCE_SITE_ADDRESSES.equals(source)) return "주소 확인";
         return "네이버 웹툰";
     }
 
@@ -281,6 +290,7 @@ public final class SourceSettings {
         if (SOURCE_TOONKOR.equals(source)) return getToonkorUrl(context) + "/%EC%9B%B9%ED%88%B0";
         if (SOURCE_FUNBE.equals(source)) return getFunbeUrl(context) + "/%EC%9B%B9%ED%88%B0";
         if (SOURCE_NEWTOKI.equals(source)) return getNewtokiUrl(context);
+        if (SOURCE_SITE_ADDRESSES.equals(source)) return SITE_ADDRESSES_URL;
         return "https://comic.naver.com/webtoon";
     }
 
@@ -309,10 +319,11 @@ public final class SourceSettings {
 
     private static boolean isKnownSource(String source) {
         return SOURCE_NAVER.equals(source) || SOURCE_JOATOON.equals(source) ||
-                SOURCE_MANHWABANG.equals(source) || SOURCE_ILILTOON.equals(source) ||
+                SOURCE_ILILTOON.equals(source) ||
                 SOURCE_BLACKTOON.equals(source) || SOURCE_WOLFDOT.equals(source) ||
                 SOURCE_HITOMI.equals(source) || SOURCE_TOONKOR.equals(source) ||
                 SOURCE_FUNBE.equals(source) || SOURCE_NEWTOKI.equals(source) ||
+                SOURCE_SITE_ADDRESSES.equals(source) ||
                 SOURCE_SERVER.equals(source);
     }
 

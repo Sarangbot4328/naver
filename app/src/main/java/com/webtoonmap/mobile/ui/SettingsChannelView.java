@@ -44,7 +44,6 @@ public final class SettingsChannelView extends FrameLayout {
     private final RadioGroup sourceGroup;
     private final RadioGroup viewModeGroup;
     private final View joatoonAddressBox;
-    private final View manhwabangAddressBox;
     private final View ililtoonAddressBox;
     private final View blacktoonAddressBox;
     private final View wolfdotAddressBox;
@@ -54,7 +53,6 @@ public final class SettingsChannelView extends FrameLayout {
     private final View newtokiAddressBox;
     private final View serverAddressBox;
     private final EditText joatoonUrl;
-    private final EditText manhwabangUrl;
     private final EditText ililtoonUrl;
     private final EditText blacktoonUrl;
     private final EditText wolfdotUrl;
@@ -98,7 +96,6 @@ public final class SettingsChannelView extends FrameLayout {
         sourceGroup = findViewById(R.id.source_group);
         viewModeGroup = findViewById(R.id.view_mode_group);
         joatoonAddressBox = findViewById(R.id.joatoon_address_box);
-        manhwabangAddressBox = findViewById(R.id.manhwabang_address_box);
         ililtoonAddressBox = findViewById(R.id.ililtoon_address_box);
         blacktoonAddressBox = findViewById(R.id.blacktoon_address_box);
         wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
@@ -108,7 +105,6 @@ public final class SettingsChannelView extends FrameLayout {
         newtokiAddressBox = findViewById(R.id.newtoki_address_box);
         serverAddressBox = findViewById(R.id.server_address_box);
         joatoonUrl = findViewById(R.id.joatoon_url);
-        manhwabangUrl = findViewById(R.id.manhwabang_url);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
         blacktoonUrl = findViewById(R.id.blacktoon_url);
         wolfdotUrl = findViewById(R.id.wolfdot_url);
@@ -190,7 +186,6 @@ public final class SettingsChannelView extends FrameLayout {
         });
         saveLowDataMinutes.setOnClickListener(v -> saveLowDataMinutes());
         findViewById(R.id.save_joatoon_url).setOnClickListener(v -> saveJoatoonUrl());
-        findViewById(R.id.save_manhwabang_url).setOnClickListener(v -> saveManhwabangUrl());
         findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
         findViewById(R.id.save_blacktoon_url).setOnClickListener(v -> saveBlacktoonUrl());
         findViewById(R.id.save_wolfdot_url).setOnClickListener(v -> saveWolfdotUrl());
@@ -218,7 +213,6 @@ public final class SettingsChannelView extends FrameLayout {
                 : SourceSettings.VIEW_MODE_PAGE_FIT.equals(viewMode)
                 ? R.id.view_mode_page_fit : R.id.view_mode_scroll);
         joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
-        manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
         ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
         blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
         wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
@@ -549,16 +543,6 @@ public final class SettingsChannelView extends FrameLayout {
         Toast.makeText(activity, "조아툰 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
     }
 
-    private void saveManhwabangUrl() {
-        if (!SourceSettings.setManhwabangUrl(activity, manhwabangUrl.getText().toString())) {
-            invalidUrl();
-            return;
-        }
-        manhwabangUrl.setText(SourceSettings.getManhwabangUrl(activity));
-        activity.applyChannelSettings();
-        Toast.makeText(activity, "만화방 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
-    }
-
     private void saveIliltoonUrl() {
         if (!SourceSettings.setIliltoonUrl(activity, ililtoonUrl.getText().toString())) {
             invalidUrl();
@@ -694,7 +678,6 @@ public final class SettingsChannelView extends FrameLayout {
 
     private String sourceForCheckedId(int checkedId) {
         if (checkedId == R.id.source_joatoon) return SourceSettings.SOURCE_JOATOON;
-        if (checkedId == R.id.source_manhwabang) return SourceSettings.SOURCE_MANHWABANG;
         if (checkedId == R.id.source_ililtoon) return SourceSettings.SOURCE_ILILTOON;
         if (checkedId == R.id.source_blacktoon) return SourceSettings.SOURCE_BLACKTOON;
         if (checkedId == R.id.source_wolfdot) return SourceSettings.SOURCE_WOLFDOT;
@@ -702,13 +685,13 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
         if (checkedId == R.id.source_funbe) return SourceSettings.SOURCE_FUNBE;
         if (checkedId == R.id.source_newtoki) return SourceSettings.SOURCE_NEWTOKI;
+        if (checkedId == R.id.source_site_addresses) return SourceSettings.SOURCE_SITE_ADDRESSES;
         if (checkedId == R.id.source_server) return SourceSettings.SOURCE_SERVER;
         return SourceSettings.SOURCE_NAVER;
     }
 
     private int checkedIdForSource(String source) {
         if (SourceSettings.SOURCE_JOATOON.equals(source)) return R.id.source_joatoon;
-        if (SourceSettings.SOURCE_MANHWABANG.equals(source)) return R.id.source_manhwabang;
         if (SourceSettings.SOURCE_ILILTOON.equals(source)) return R.id.source_ililtoon;
         if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return R.id.source_blacktoon;
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return R.id.source_wolfdot;
@@ -716,13 +699,13 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
         if (SourceSettings.SOURCE_FUNBE.equals(source)) return R.id.source_funbe;
         if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return R.id.source_newtoki;
+        if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) return R.id.source_site_addresses;
         if (SourceSettings.SOURCE_SERVER.equals(source)) return R.id.source_server;
         return R.id.source_naver;
     }
 
     private void updateAddressVisibility(String source) {
         joatoonAddressBox.setVisibility(SourceSettings.SOURCE_JOATOON.equals(source) ? VISIBLE : GONE);
-        manhwabangAddressBox.setVisibility(SourceSettings.SOURCE_MANHWABANG.equals(source) ? VISIBLE : GONE);
         ililtoonAddressBox.setVisibility(SourceSettings.SOURCE_ILILTOON.equals(source) ? VISIBLE : GONE);
         blacktoonAddressBox.setVisibility(SourceSettings.SOURCE_BLACKTOON.equals(source) ? VISIBLE : GONE);
         wolfdotAddressBox.setVisibility(SourceSettings.SOURCE_WOLFDOT.equals(source) ? VISIBLE : GONE);

@@ -181,6 +181,9 @@ public final class NaverChannelView extends FrameLayout {
                         (host.equalsIgnoreCase(allowedHost) || host.endsWith("." + allowedHost))) {
                     return false;
                 }
+                if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) {
+                    openExternalBrowser(uri.toString());
+                }
                 return true;
             }
 
@@ -441,6 +444,7 @@ public final class NaverChannelView extends FrameLayout {
     }
     private String seriesKeyFrom(String url) {
         if (url == null) return null;
+        if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) return null;
         if (SourceSettings.SOURCE_JOATOON.equals(source)) {
             try {
                 Matcher matcher = Pattern.compile("/toon/w/(\\d+)(?:/|$)", Pattern.CASE_INSENSITIVE)

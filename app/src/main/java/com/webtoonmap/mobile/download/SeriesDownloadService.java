@@ -721,7 +721,7 @@ public final class SeriesDownloadService extends Service {
         storage.cleanupIncomplete(titleId);
 
         String thumbnailPath = saveExternalThumbnail(
-                titleId, thumbnailUrl, pageUrl, cookie, storage);
+                titleId, thumbnailUrl, pageUrl, cookie, storage, api);
         checkCancelled();
         if (thumbnailPath == null && existing != null) thumbnailPath = existing.thumbnailPath;
         db.upsertSeries(new SeriesItem(titleId, title, description, tags,
@@ -892,8 +892,13 @@ public final class SeriesDownloadService extends Service {
     }
 
     private String saveExternalThumbnail(String titleId, String thumbnailUrl, String pageUrl,
-                                         String cookie, WebtoonStorage storage) {
+                                         String cookie, WebtoonStorage storage,
+                                         ExternalSiteApi api) {
         if (thumbnailUrl == null || thumbnailUrl.isEmpty()) return null;
+        try {
+            return storage.writeThumbnail(titleId,
+                    api.downloadBytes(thumbnailUrl, pageUrl));
+        } catch (Exception ignored) { }
         try {
             return storage.writeThumbnail(titleId,
                     OptionalImageDownloader.download(thumbnailUrl, pageUrl, cookie));
