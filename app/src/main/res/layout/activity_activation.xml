@@ -15,7 +15,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="48dp"
-            android:text="웹툰여지도 모바일"
+            android:text="직박구리 스페이스 모바일"
             android:textColor="@color/text_primary"
             android:textSize="28sp"
             android:textStyle="bold" />
@@ -107,7 +107,7 @@
                 android:background="@color/background"
                 android:lineSpacingExtra="4dp"
                 android:padding="14dp"
-                android:text="관리자에게 위 등록 사용자명을 알려주고 활성화 비밀번호를 요청하세요.\n관리자가 승인하면 아래에 암호 입력칸이 나타납니다."
+                android:text="관리자에게 위 등록 사용자명을 알려주세요.\n관리자가 /우동모바일 사용자명 (비밀번호) 명령을 보내면 아래에 암호 입력칸이 나타납니다."
                 android:textColor="@color/green_dark"
                 android:textSize="15sp"
                 android:textStyle="bold" />

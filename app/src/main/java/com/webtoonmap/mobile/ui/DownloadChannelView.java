@@ -17,8 +17,6 @@ import android.widget.TextView;
 import android.widget.Button;
 import android.widget.Toast;
 
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
@@ -27,18 +25,12 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
-import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
-import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
 import com.webtoonmap.mobile.export.SeriesExporter;
-import com.webtoonmap.mobile.server.LanServerClient;
-import com.webtoonmap.mobile.server.LanServerConnector;
-import com.webtoonmap.mobile.server.LanServerItem;
-import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import java.io.File;
@@ -56,12 +48,6 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     private final TextView status;
     private final Button exportButton;
     private final SwipeRefreshLayout swipe;
-    private final ActivityResultLauncher<Intent> shareLauncher;
-    private final ActivityResultLauncher<String> saveExportLauncher;
-    private final ActivityResultLauncher<Uri> viewerFolderLauncher;
-    private File pendingSharedExport;
-    private File pendingSavedExport;
-    private List<SeriesItem> pendingViewerItems;
     private boolean receiverRegistered;
     private boolean exporting;
 
@@ -74,19 +60,6 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
 
     public DownloadChannelView(Context context) {
         super(context);
-        if (!(context instanceof MainActivity)) {
-            throw new IllegalArgumentException("DownloadChannelView requires MainActivity");
-        }
-        MainActivity activity = (MainActivity) context;
-        shareLauncher = activity.registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(),
-                result -> deletePendingSharedExport());
-        saveExportLauncher = activity.registerForActivityResult(
-                new ActivityResultContracts.CreateDocument("application/zip"),
-                this::finishTransferFileSave);
-        viewerFolderLauncher = activity.registerForActivityResult(
-                new ActivityResultContracts.OpenDocumentTree(),
-                this::finishViewerFolderSelection);
         LayoutInflater.from(context).inflate(R.layout.channel_downloads, this, true);
         list = findViewById(R.id.series_list);
         empty = findViewById(R.id.empty);
@@ -96,7 +69,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         list.setLayoutManager(new LinearLayoutManager(context));
         list.setAdapter(adapter);
         findViewById(R.id.refresh).setOnClickListener(v -> refresh());
-        exportButton.setOnClickListener(v -> chooseExportMode());
+        exportButton.setOnClickListener(v -> chooseExport());
         swipe.setOnRefreshListener(this::refresh);
         refresh();
     }
@@ -114,25 +87,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         });
     }
 
-    private void chooseExportMode() {
-        if (exporting) return;
-        new AlertDialog.Builder(getContext())
-                .setTitle("내보내기 방식 선택")
-                .setItems(new CharSequence[]{
-                        "앱 데이터 교환\n웹툰여지도 앱·PC판에서 가져오는 전용 형식",
-                        "다른 만화책 앱용\n작품명 폴더 안에 회차별 ZIP 저장",
-                        "서버에 올리기\n같은 Wi-Fi의 웹툰여지도 서버로 업로드"
-                }, (dialog, which) -> {
-                    if (which == 0) chooseSeries(0);
-                    else if (which == 1) chooseSeries(1);
-                    else chooseSeries(2);
-                })
-                .setNegativeButton("취소", null)
-                .show();
-    }
-
-    /** mode: 0=transfer, 1=viewer, 2=server upload */
-    private void chooseSeries(int mode) {
+    private void chooseExport() {
         if (exporting) return;
         List<SeriesItem> rows = adapter.snapshot();
         if (rows.isEmpty()) {
@@ -145,15 +100,11 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             SeriesItem item = rows.get(i);
             labels[i] = item.title + "\n" + item.episodeCount + "개 회차";
         }
-        String title = mode == 1 ? "다른 만화책 앱용 작품 선택"
-                : mode == 2 ? "서버에 올릴 작품 선택"
-                : "앱 데이터 교환용 작품 선택";
-        String positive = mode == 2 ? "서버에 올리기" : "내보내기";
         new AlertDialog.Builder(getContext())
-                .setTitle(title)
+                .setTitle("내보낼 웹툰 선택 (여러 개 가능)")
                 .setMultiChoiceItems(labels, selected,
                         (dialog, which, checked) -> selected[which] = checked)
-                .setPositiveButton(positive, (dialog, which) -> {
+                .setPositiveButton("내보내기", (dialog, which) -> {
                     List<SeriesItem> chosen = new ArrayList<>();
                     for (int i = 0; i < rows.size(); i++) {
                         if (selected[i]) chosen.add(rows.get(i));
@@ -161,143 +112,12 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                     if (chosen.isEmpty()) {
                         Toast.makeText(getContext(), "한 작품 이상 선택해 주세요.",
                                 Toast.LENGTH_SHORT).show();
-                    } else if (mode == 1) {
-                        requestViewerFolder(chosen);
-                    } else if (mode == 2) {
-                        exportToServer(chosen);
                     } else {
                         exportSeries(chosen);
                     }
                 })
                 .setNegativeButton("취소", null)
                 .show();
-    }
-
-    private void exportToServer(List<SeriesItem> items) {
-        if (exporting) return;
-        for (SeriesItem item : items) {
-            if (SeriesDownloadService.isDownloading(item.titleId) ||
-                    SeriesDownloadService.isQueued(getContext(), item.titleId)) {
-                Toast.makeText(getContext(), "‘" + item.title +
-                                "’ 다운로드가 끝난 뒤 내보내 주세요.",
-                        Toast.LENGTH_LONG).show();
-                return;
-            }
-        }
-        exporting = true;
-        exportButton.setEnabled(false);
-        exportButton.setText("서버 연결 중…");
-        status.setText("서버를 찾는 중…");
-        AlertDialog progressDialog = new AlertDialog.Builder(getContext())
-                .setTitle("서버에 올리기")
-                .setMessage("서버를 찾는 중…")
-                .setCancelable(false)
-                .create();
-        progressDialog.show();
-        executor.execute(() -> {
-            int ok = 0;
-            List<String> uploadedTitles = new ArrayList<>();
-            List<String> errors = new ArrayList<>();
-            try {
-                LanServerConnector.Connection connection =
-                        LanServerConnector.connect(getContext());
-                if (connection == null) {
-                    throw new java.io.IOException("서버가 연결되지 않았습니다");
-                }
-                LibraryDatabase database = LibraryDatabase.get(getContext());
-                int total = items.size();
-                for (int i = 0; i < items.size(); i++) {
-                    SeriesItem series = items.get(i);
-                    final int index = i + 1;
-                    post(() -> {
-                        exportButton.setText("업로드 중…");
-                        String head = index + "/" + total + " · ‘" + series.title + "’";
-                        status.setText(head + " 압축 중…");
-                        progressDialog.setMessage(head + "\n압축 중…");
-                    });
-                    File file = null;
-                    try {
-                        List<SeriesItem> one = new ArrayList<>();
-                        one.add(series);
-                        file = SeriesExporter.export(getContext(), one, database,
-                                (current, episodeTotal) -> post(() -> {
-                                    String text = index + "/" + total + " · ‘" + series.title +
-                                            "’ 압축 · " + current + "/" + episodeTotal + "회차";
-                                    status.setText(text);
-                                    progressDialog.setMessage(text);
-                                }));
-                        final File uploadFile = file;
-                        post(() -> {
-                            String text = index + "/" + total + " · ‘" + series.title + "’ 업로드 중…";
-                            status.setText(text);
-                            progressDialog.setMessage(text);
-                        });
-                        LanServerItem uploaded = LanServerClient.upload(getContext(),
-                                connection.baseUrl, uploadFile, (sent, totalBytes) -> post(() -> {
-                                    String text = index + "/" + total + " · ‘" + series.title +
-                                            "’ 업로드\n" + LanServerClient.percent(sent, totalBytes);
-                                    status.setText(text.replace('\n', ' '));
-                                    progressDialog.setMessage(text);
-                                }));
-                        ok++;
-                        uploadedTitles.add(uploaded.title == null || uploaded.title.isEmpty()
-                                ? series.title : uploaded.title);
-                    } catch (Exception seriesError) {
-                        String message = seriesError.getMessage() == null
-                                ? "업로드 실패" : seriesError.getMessage();
-                        errors.add("‘" + series.title + "’: " + message);
-                    } finally {
-                        if (file != null) deleteExportFile(file);
-                    }
-                }
-                final int successCount = ok;
-                final String hostLabel = connection.host + ":" + connection.port;
-                post(() -> {
-                    progressDialog.dismiss();
-                    String summary = "서버 업로드 완료 · " + successCount + "/" + total + "개 작품";
-                    if (!errors.isEmpty()) summary += " · 실패 " + errors.size() + "개";
-                    finishExportUi(summary);
-                    StringBuilder body = new StringBuilder();
-                    body.append(successCount).append("개 작품을 각각 서버에 올렸습니다.\n")
-                            .append(hostLabel);
-                    if (!uploadedTitles.isEmpty()) {
-                        body.append("\n\n");
-                        int show = Math.min(8, uploadedTitles.size());
-                        for (int i = 0; i < show; i++) {
-                            body.append("· ").append(uploadedTitles.get(i)).append('\n');
-                        }
-                        if (uploadedTitles.size() > show) {
-                            body.append("· 외 ").append(uploadedTitles.size() - show).append("개\n");
-                        }
-                    }
-                    if (!errors.isEmpty()) {
-                        body.append("\n실패\n· ").append(errors.get(0));
-                        if (errors.size() > 1) {
-                            body.append("\n· 외 ").append(errors.size() - 1).append("건");
-                        }
-                    }
-                    body.append("\n\n서버에서 작품별 삭제·다운로드가 가능합니다.");
-                    new AlertDialog.Builder(getContext())
-                            .setTitle(successCount > 0 ? "서버 업로드 완료" : "서버 업로드 실패")
-                            .setMessage(body.toString().trim())
-                            .setPositiveButton("확인", null)
-                            .show();
-                });
-            } catch (Exception error) {
-                String message = error.getMessage() == null
-                        ? "서버 업로드에 실패했습니다." : error.getMessage();
-                post(() -> {
-                    progressDialog.dismiss();
-                    finishExportUi("서버 업로드 실패");
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("서버 업로드 실패")
-                            .setMessage(message)
-                            .setPositiveButton("확인", null)
-                            .show();
-                    Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
-                });
-            }
-        });
     }
 
     private void exportSeries(List<SeriesItem> items) {
@@ -336,17 +156,12 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                     exportButton.setText("내보내기");
                     status.setText("내보내기 완료 · " + file.getName());
                     progressDialog.dismiss();
-                    AlertDialog completedDialog = new AlertDialog.Builder(getContext())
+                    new AlertDialog.Builder(getContext())
                             .setTitle("내보내기 완료")
-                            .setMessage(items.size() + "개 작품을 하나의 파일로 만들었습니다.\n" +
-                                    file.getName() + "\n\n공유·기기 저장·닫기 후 앱의 임시 파일은 자동 삭제됩니다.")
+                            .setMessage(items.size() + "개 작품을 하나의 파일로 만들었습니다.\n" + file.getName())
                             .setPositiveButton("공유하기", (dialog, which) -> shareExport(file))
-                            .setNeutralButton("기기에 저장",
-                                    (dialog, which) -> saveTransferExport(file))
-                            .setNegativeButton("닫기", (dialog, which) -> deleteExportFile(file))
-                            .create();
-                    completedDialog.setOnCancelListener(dialog -> deleteExportFile(file));
-                    completedDialog.show();
+                            .setNegativeButton("닫기", null)
+                            .show();
                 });
             } catch (Exception error) {
                 String message = error.getMessage() == null ?
@@ -368,131 +183,6 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         });
     }
 
-    private void requestViewerFolder(List<SeriesItem> items) {
-        for (SeriesItem item : items) {
-            if (SeriesDownloadService.isDownloading(item.titleId) ||
-                    SeriesDownloadService.isQueued(getContext(), item.titleId)) {
-                Toast.makeText(getContext(), "‘" + item.title +
-                                "’ 다운로드가 끝난 뒤 내보내 주세요.",
-                        Toast.LENGTH_LONG).show();
-                return;
-            }
-        }
-        exporting = true;
-        exportButton.setEnabled(false);
-        pendingViewerItems = new ArrayList<>(items);
-        status.setText("저장할 상위 폴더를 선택해 주세요.");
-        try {
-            viewerFolderLauncher.launch(null);
-        } catch (Exception error) {
-            pendingViewerItems = null;
-            finishExportUi("폴더 선택 화면을 열지 못했습니다.");
-        }
-    }
-
-    private void finishViewerFolderSelection(Uri treeUri) {
-        List<SeriesItem> items = pendingViewerItems;
-        pendingViewerItems = null;
-        if (items == null) return;
-        if (treeUri == null) {
-            finishExportUi("만화책 앱용 내보내기를 취소했습니다.");
-            return;
-        }
-        AlertDialog progressDialog = new AlertDialog.Builder(getContext())
-                .setTitle("다른 만화책 앱용 내보내기")
-                .setMessage("작품 폴더를 만드는 중…")
-                .setCancelable(false)
-                .create();
-        progressDialog.show();
-        executor.execute(() -> {
-            try {
-                LibraryDatabase database = LibraryDatabase.get(getContext());
-                SeriesExporter.exportViewerFolders(getContext(), treeUri, items, database,
-                        (current, total) -> post(() -> {
-                            String message = "회차 ZIP 저장 중 · " + current + "/" + total;
-                            status.setText(message);
-                            progressDialog.setMessage(message);
-                        }));
-                post(() -> {
-                    progressDialog.dismiss();
-                    finishExportUi("다른 만화책 앱용 내보내기 완료 · " +
-                            items.size() + "개 작품");
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("내보내기 완료")
-                            .setMessage("선택한 저장소에 작품명 폴더와 회차별 ZIP 파일을 저장했습니다.")
-                            .setPositiveButton("확인", null)
-                            .show();
-                });
-            } catch (Exception error) {
-                String message = error.getMessage() == null
-                        ? "만화책 앱용 내보내기에 실패했습니다." : error.getMessage();
-                post(() -> {
-                    progressDialog.dismiss();
-                    finishExportUi("내보내기 실패");
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("내보내기 실패")
-                            .setMessage(message)
-                            .setPositiveButton("확인", null)
-                            .show();
-                });
-            }
-        });
-    }
-
-    private void saveTransferExport(File file) {
-        deletePendingSavedExport();
-        pendingSavedExport = file;
-        exporting = true;
-        exportButton.setEnabled(false);
-        status.setText("저장할 위치를 선택해 주세요.");
-        try {
-            saveExportLauncher.launch(file.getName());
-        } catch (Exception error) {
-            deletePendingSavedExport();
-            finishExportUi("저장 화면을 열지 못했습니다.");
-        }
-    }
-
-    private void finishTransferFileSave(Uri destination) {
-        File file = pendingSavedExport;
-        pendingSavedExport = null;
-        if (file == null) return;
-        if (destination == null) {
-            deleteExportFile(file);
-            finishExportUi("기기 저장을 취소했습니다.");
-            return;
-        }
-        status.setText("선택한 위치에 저장 중…");
-        executor.execute(() -> {
-            String message;
-            boolean success;
-            try {
-                SeriesExporter.saveTransferFile(getContext(), file, destination);
-                message = "앱 데이터 교환 파일을 기기에 저장했습니다.";
-                success = true;
-            } catch (Exception error) {
-                message = error.getMessage() == null
-                        ? "기기에 저장하지 못했습니다." : error.getMessage();
-                success = false;
-            } finally {
-                deleteExportFile(file);
-            }
-            final String resultMessage = message;
-            final boolean saved = success;
-            post(() -> {
-                finishExportUi(saved ? "기기 저장 완료" : "기기 저장 실패");
-                Toast.makeText(getContext(), resultMessage, Toast.LENGTH_LONG).show();
-            });
-        });
-    }
-
-    private void finishExportUi(String message) {
-        exporting = false;
-        exportButton.setEnabled(adapter.getItemCount() > 0);
-        exportButton.setText("내보내기");
-        status.setText(message);
-    }
-
     private void shareExport(File file) {
         try {
             Uri uri = FileProvider.getUriForFile(getContext(),
@@ -507,31 +197,11 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
             if (!(getContext() instanceof Activity)) {
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             }
-            deletePendingSharedExport();
-            pendingSharedExport = file;
-            shareLauncher.launch(chooser);
+            getContext().startActivity(chooser);
         } catch (Exception error) {
-            pendingSharedExport = null;
-            deleteExportFile(file);
-            Toast.makeText(getContext(), "공유 화면을 열지 못했습니다. 임시 파일을 삭제했습니다.",
+            Toast.makeText(getContext(), "공유 화면을 열지 못했습니다.",
                     Toast.LENGTH_LONG).show();
         }
-    }
-
-    private void deletePendingSavedExport() {
-        File file = pendingSavedExport;
-        pendingSavedExport = null;
-        deleteExportFile(file);
-    }
-
-    private void deletePendingSharedExport() {
-        File file = pendingSharedExport;
-        pendingSharedExport = null;
-        deleteExportFile(file);
-    }
-
-    private static void deleteExportFile(File file) {
-        if (file != null && file.isFile()) file.delete();
     }
 
     @Override protected void onAttachedToWindow() {
@@ -624,11 +294,6 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                     .setMessage("‘" + item.title + "’의 썸네일, 모든 회차 ZIP과 작품 정보를 실제 저장소에서 삭제합니다.")
                     .setNegativeButton("취소", null)
                     .setPositiveButton("삭제", (dialog, which) -> executor.execute(() -> {
-                        LibraryDatabase database = LibraryDatabase.get(getContext());
-                        boolean previouslyViewed = false;
-                        for (EpisodeItem episode : database.listEpisodes(item.titleId)) {
-                            if (episode.viewed) { previouslyViewed = true; break; }
-                        }
                         boolean deleted;
                         try {
                             deleted = new WebtoonStorage(getContext(), item.storageUri)
@@ -637,8 +302,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                             deleted = false;
                         }
                         if (deleted) {
-                            if (previouslyViewed) ViewedSeriesHistory.record(getContext(), item);
-                            database.deleteSeries(item.titleId);
+                            LibraryDatabase.get(getContext()).deleteSeries(item.titleId);
                             SourceJobStore.remove(getContext(), item.titleId);
                         }
                         final boolean result = deleted;

@@ -6,10 +6,8 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.BitmapFactory;
 import android.os.IBinder;
 import android.os.PowerManager;
-import android.os.SystemClock;
 import android.webkit.CookieManager;
 
 import androidx.annotation.Nullable;
@@ -21,22 +19,15 @@ import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
 import com.webtoonmap.mobile.data.SeriesItem;
-import com.webtoonmap.mobile.blacktoon.BlacktoonApi;
-import com.webtoonmap.mobile.funbe.FunbeApi;
-import com.webtoonmap.mobile.hitomi.HitomiApi;
 import com.webtoonmap.mobile.ililtoon.IliltoonApi;
 import com.webtoonmap.mobile.manhwabang.ManhwabangApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.naver.NaverApi;
 import com.webtoonmap.mobile.network.NetworkRetry;
 import com.webtoonmap.mobile.network.OptionalImageDownloader;
-import com.webtoonmap.mobile.newtoki.NewtokiApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
-import com.webtoonmap.mobile.wolfdot.WolfdotApi;
-import com.webtoonmap.mobile.toonkor.ToonkorApi;
-import com.webtoonmap.mobile.toonkor.ToonkorMetadataStore;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -44,8 +35,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -63,15 +52,10 @@ public final class SeriesDownloadService extends Service {
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static volatile String currentTitleId;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final ScheduledExecutorService progressWatchdog =
-            Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
-    private final AtomicBoolean stalledRestartRequested = new AtomicBoolean(false);
-    private final AtomicBoolean manualStopRequested = new AtomicBoolean(false);
     private PowerManager.WakeLock wakeLock;
     private volatile Thread workerThread;
     private volatile boolean serviceDestroying;
-    private volatile long lastProgressAtMs;
 
     public static boolean isRunning() { return RUNNING.get(); }
     public static boolean isDownloading(String titleId) {
@@ -106,17 +90,12 @@ public final class SeriesDownloadService extends Service {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
                 CHANNEL_ID, "웹툰 다운로드", NotificationManager.IMPORTANCE_LOW));
-        lastProgressAtMs = SystemClock.elapsedRealtime();
-        progressWatchdog.scheduleWithFixedDelay(
-                this::checkForStalledDownload, 15, 15, TimeUnit.SECONDS);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIFICATION_ID, notification("다운로드 준비 중…", 0, 0));
         String action = intent == null ? ACTION_PROCESS : intent.getAction();
         if (ACTION_STOP.equals(action)) {
-            manualStopRequested.set(true);
-            stalledRestartRequested.set(false);
             DownloadQueue.clear(this);
             if (RUNNING.get()) {
                 cancelRequested.set(true);
@@ -155,8 +134,6 @@ public final class SeriesDownloadService extends Service {
                 if (titleId == null) break;
                 currentTitleId = titleId;
                 cancelRequested.set(false);
-                stalledRestartRequested.set(false);
-                markProgress();
                 Thread.interrupted();
                 try {
                     downloadOne(titleId);
@@ -166,13 +143,7 @@ public final class SeriesDownloadService extends Service {
                     Thread.interrupted();
                     if (cancelled) {
                         LibraryDatabase.get(this).setSeriesStatus(titleId, "paused");
-                        if (stalledRestartRequested.get() && !manualStopRequested.get()) {
-                            broadcast("진행 정체 감지 · 미완성 회차 정리 후 자동 이어받기합니다.",
-                                    false, false);
-                        } else {
-                            broadcast("전체 다운로드 중단됨 · 대기열과 미완성 회차를 정리했습니다.",
-                                    true, false);
-                        }
+                        broadcast("전체 다운로드 중단됨 · 대기열과 미완성 회차를 정리했습니다.", true, false);
                     } else {
                         LibraryDatabase.get(this).setSeriesStatus(titleId, "error");
                         String message = e.getMessage() == null ? "다운로드 실패" : e.getMessage();
@@ -181,17 +152,8 @@ public final class SeriesDownloadService extends Service {
                     }
                 } finally {
                     cleanupIncomplete(titleId);
-                    boolean restart = stalledRestartRequested.get() &&
-                            SourceSettings.isLowDataMode(this) &&
-                            !manualStopRequested.get() && !serviceDestroying;
-                    if (!restart && !serviceDestroying) DownloadQueue.remove(this, titleId);
+                    if (!serviceDestroying) DownloadQueue.remove(this, titleId);
                     currentTitleId = null;
-                    if (restart) {
-                        cancelRequested.set(false);
-                        stalledRestartRequested.set(false);
-                        Thread.interrupted();
-                        update("자동 이어받기 재시작 중…", 0, 0);
-                    }
                 }
             }
         } finally {
@@ -211,23 +173,10 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void downloadOne(String titleId) throws Exception {
-        com.webtoonmap.mobile.network.ConnectionCompatibility.configure(this);
         if (ManhwabangApi.isSeriesKey(titleId)) {
             downloadManhwabang(titleId);
         } else if (IliltoonApi.isSeriesKey(titleId)) {
             downloadIliltoon(titleId);
-        } else if (BlacktoonApi.isSeriesKey(titleId)) {
-            downloadBlacktoon(titleId);
-        } else if (WolfdotApi.isSeriesKey(titleId)) {
-            downloadWolfdot(titleId);
-        } else if (ToonkorApi.isSeriesKey(titleId)) {
-            downloadToonkor(titleId);
-        } else if (FunbeApi.isSeriesKey(titleId)) {
-            downloadFunbe(titleId);
-        } else if (NewtokiApi.isSeriesKey(titleId)) {
-            downloadNewtoki(titleId);
-        } else if (HitomiApi.isSeriesKey(titleId)) {
-            downloadHitomi(titleId);
         } else if (JoatoonApi.isSeriesKey(titleId)) {
             downloadJoatoon(titleId);
         } else {
@@ -394,19 +343,6 @@ public final class SeriesDownloadService extends Service {
     private interface ExternalSiteApi {
         List<String> fetchImages(String episodeUrl) throws Exception;
         byte[] downloadBytes(String imageUrl, String referer) throws Exception;
-
-        default byte[] downloadThumbnailBytes(String imageUrl, String pageUrl)
-                throws Exception {
-            return downloadBytes(imageUrl, pageUrl);
-        }
-
-        default int maxEpisodeAttempts() {
-            return 1;
-        }
-
-        default long retryDelayMs(int failedAttempt) {
-            return 0L;
-        }
     }
 
     private static final class ExternalEpisode {
@@ -478,245 +414,6 @@ public final class SeriesDownloadService extends Service {
                 });
     }
 
-    private void downloadBlacktoon(String titleId) throws Exception {
-        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
-        if (job == null) {
-            throw new IllegalStateException("블랙툰 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
-        }
-        String baseUrl = SourceSettings.getBlacktoonUrl(this);
-        String seriesId = job.remoteId;
-        if (seriesId == null || seriesId.isEmpty()) {
-            throw new IllegalStateException("블랙툰 작품 번호를 확인하지 못했습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
-        }
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
-        checkCancelled();
-        update("블랙툰 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
-        BlacktoonApi.SeriesInfo info = BlacktoonApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
-        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
-        for (BlacktoonApi.EpisodeMeta episode : info.episodes) {
-            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
-        }
-        downloadExternalSeries(titleId, "블랙툰", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
-                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        return BlacktoonApi.fetchEpisodeImages(episodeUrl, cookie);
-                    }
-
-                    @Override public byte[] downloadBytes(String imageUrl, String referer)
-                            throws Exception {
-                        return BlacktoonApi.downloadBytes(imageUrl, referer, cookie);
-                    }
-                });
-    }
-
-    private void downloadWolfdot(String titleId) throws Exception {
-        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
-        if (job == null) {
-            throw new IllegalStateException("늑대닷컴 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
-        }
-        String baseUrl = SourceSettings.getWolfdotUrl(this);
-        String seriesId = job.remoteId;
-        if (seriesId == null || seriesId.isEmpty()) {
-            throw new IllegalStateException("늑대닷컴 작품 번호를 확인하지 못했습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
-        }
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
-        checkCancelled();
-        update("늑대닷컴 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
-        WolfdotApi.SeriesInfo info = WolfdotApi.fetchSeriesInfo(baseUrl, seriesId, job.kind, cookie);
-        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
-        for (WolfdotApi.EpisodeMeta episode : info.episodes) {
-            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
-        }
-        downloadExternalSeries(titleId, "늑대닷컴", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
-                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        return WolfdotApi.fetchEpisodeImages(episodeUrl, cookie);
-                    }
-
-                    @Override public byte[] downloadBytes(String imageUrl, String referer)
-                            throws Exception {
-                        return WolfdotApi.downloadBytes(imageUrl, referer, cookie);
-                    }
-                });
-    }
-    private void downloadToonkor(String titleId) throws Exception {
-        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
-        if (job == null) {
-            throw new IllegalStateException("\uD230\uCF54 \uC791\uD488 \uC8FC\uC18C \uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC791\uD488 \uD398\uC774\uC9C0\uC5D0\uC11C \uB2E4\uC2DC \uB2E4\uC6B4\uB85C\uB4DC\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694.");
-        }
-        String baseUrl = SourceSettings.getToonkorUrl(this);
-        String pageUrl = job.pageUrl(baseUrl);
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
-        ToonkorMetadataStore.Entry cached = ToonkorMetadataStore.get(this, job.relativeUrl);
-        checkCancelled();
-        update("\uD230\uCF54 \uC791\uD488 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\u2026 \u00B7 \uB300\uAE30\uC5F4 " +
-                DownloadQueue.size(this) + "\uAC1C", 0, 0);
-        ToonkorApi.SeriesInfo info = ToonkorApi.fetchSeriesInfo(pageUrl, cookie, cached);
-        ToonkorMetadataStore.put(this, info.pageUrl, info.title, info.description,
-                info.thumbnailUrl, info.tags);
-        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
-        for (ToonkorApi.EpisodeMeta episode : info.episodes) {
-            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
-        }
-        downloadExternalSeries(titleId, "\uD230\uCF54", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
-                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        String currentCookie = CookieManager.getInstance().getCookie(baseUrl);
-                        if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
-                        return ToonkorApi.fetchEpisodeImages(episodeUrl, currentCookie);
-                    }
-
-                    @Override public byte[] downloadBytes(String imageUrl, String referer)
-                            throws Exception {
-                        String currentCookie = CookieManager.getInstance().getCookie(baseUrl);
-                        if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
-                        return ToonkorApi.downloadBytes(imageUrl, referer, currentCookie);
-                    }
-
-                    @Override public int maxEpisodeAttempts() {
-                        return 4;
-                    }
-
-                    @Override public long retryDelayMs(int failedAttempt) {
-                        return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
-                    }
-                });
-    }
-
-    private void downloadFunbe(String titleId) throws Exception {
-        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
-        if (job == null) {
-            throw new IllegalStateException("\uD380\uBE44 \uC791\uD488 \uC8FC\uC18C \uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC791\uD488 \uD398\uC774\uC9C0\uC5D0\uC11C \uB2E4\uC2DC \uB2E4\uC6B4\uB85C\uB4DC\uB97C \uB20C\uB7EC \uC8FC\uC138\uC694.");
-        }
-        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
-        String baseUrl = SourceSettings.getFunbeUrl(this);
-        String pageUrl = job.pageUrl(baseUrl);
-        String initialCookie = CookieManager.getInstance().getCookie(baseUrl);
-        ToonkorMetadataStore.Entry cached = ToonkorMetadataStore.get(this, "funbe:" + job.relativeUrl);
-        checkCancelled();
-        update("\uD380\uBE44 \uC791\uD488 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\u2026 \u00B7 \uB300\uAE30\uC5F4 " +
-                DownloadQueue.size(this) + "\uAC1C", 0, 0);
-        ToonkorApi.SeriesInfo info;
-        String acceptedCookie = initialCookie;
-        try {
-            info = FunbeApi.fetchSeriesInfo(pageUrl, initialCookie, cached);
-        } catch (Exception firstError) {
-            if (initialCookie == null || initialCookie.isEmpty()) throw firstError;
-            acceptedCookie = null;
-            info = FunbeApi.fetchSeriesInfo(pageUrl, null, cached);
-        }
-        final String cookie = acceptedCookie;
-        ToonkorMetadataStore.put(this, "funbe:" + job.relativeUrl, info.title, info.description,
-                info.thumbnailUrl, info.tags);
-        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
-        for (ToonkorApi.EpisodeMeta episode : info.episodes) {
-            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
-        }
-        downloadExternalSeries(titleId, "\uD380\uBE44", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
-                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        String currentCookie = cookie == null ? null :
-                                CookieManager.getInstance().getCookie(baseUrl);
-                        if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
-                        return FunbeApi.fetchEpisodeImages(episodeUrl, currentCookie);
-                    }
-
-                    @Override public byte[] downloadBytes(String imageUrl, String referer)
-                            throws Exception {
-                        String currentCookie = cookie == null ? null :
-                                CookieManager.getInstance().getCookie(baseUrl);
-                        if (currentCookie == null || currentCookie.isEmpty()) currentCookie = cookie;
-                        return FunbeApi.downloadBytes(imageUrl, referer, currentCookie);
-                    }
-
-                    @Override public int maxEpisodeAttempts() {
-                        return 4;
-                    }
-
-                    @Override public long retryDelayMs(int failedAttempt) {
-                        return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
-                    }
-                });
-    }
-
-    private void downloadNewtoki(String titleId) throws Exception {
-        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
-        if (job == null) {
-            throw new IllegalStateException("뉴토끼 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
-        }
-        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
-        String baseUrl = SourceSettings.getNewtokiUrl(this);
-        String pageUrl = job.pageUrl(baseUrl);
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
-        checkCancelled();
-        update("뉴토끼 작품 정보를 불러오는 중… · 대기열 " +
-                DownloadQueue.size(this) + "개", 0, 0);
-        NewtokiApi.SeriesInfo info = NewtokiApi.fetchSeriesInfo(pageUrl, cookie);
-        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
-        for (NewtokiApi.EpisodeMeta episode : info.episodes) {
-            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
-        }
-        downloadExternalSeries(titleId, "뉴토끼", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
-                    private String currentCookie() {
-                        String current = CookieManager.getInstance().getCookie(baseUrl);
-                        return current == null || current.isEmpty() ? cookie : current;
-                    }
-
-                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
-                        return NewtokiApi.fetchEpisodeImages(episodeUrl, currentCookie());
-                    }
-
-                    @Override public byte[] downloadBytes(String imageUrl, String referer)
-                            throws Exception {
-                        return NewtokiApi.downloadBytes(imageUrl, referer, currentCookie());
-                    }
-
-                    @Override public byte[] downloadThumbnailBytes(
-                            String imageUrl, String referer) throws Exception {
-                        return NewtokiApi.downloadThumbnailBytes(
-                                imageUrl, referer, currentCookie());
-                    }
-
-                    @Override public int maxEpisodeAttempts() {
-                        return 4;
-                    }
-
-                    @Override public long retryDelayMs(int failedAttempt) {
-                        return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
-                    }
-                });
-    }
-    private void downloadHitomi(String titleId) throws Exception {
-        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
-        String baseUrl = SourceSettings.getHitomiUrl(this);
-        String galleryId = job == null || job.remoteId == null || job.remoteId.isEmpty()
-                ? HitomiApi.remoteId(titleId) : job.remoteId;
-        if (galleryId == null || galleryId.isEmpty()) {
-            throw new IllegalStateException("히토미 갤러리 번호를 확인하지 못했습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
-        }
-        String pageUrl = job == null
-                ? baseUrl + "/reader/" + galleryId + ".html" : job.pageUrl(baseUrl);
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
-        checkCancelled();
-        update("히토미 갤러리 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
-        HitomiApi.SeriesInfo info =
-                HitomiApi.fetchSeriesInfo(baseUrl, galleryId, pageUrl, cookie);
-        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
-        episodes.add(new ExternalEpisode(1, "전체", info.pageUrl));
-        downloadExternalSeries(titleId, "히토미", info.title, info.description, info.tags,
-                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
-                    @Override public List<String> fetchImages(String episodeUrl) {
-                        return info.imageUrls;
-                    }
-
-                    @Override public byte[] downloadBytes(String imageUrl, String referer)
-                            throws Exception {
-                        return HitomiApi.downloadBytes(imageUrl, referer, cookie);
-                    }
-                });
-    }
-
     private void downloadExternalSeries(String titleId, String sourceName, String title,
                                         String description, String tags, String thumbnailUrl,
                                         String pageUrl, String cookie,
@@ -733,7 +430,7 @@ public final class SeriesDownloadService extends Service {
         storage.cleanupIncomplete(titleId);
 
         String thumbnailPath = saveExternalThumbnail(
-                titleId, thumbnailUrl, pageUrl, cookie, storage, api);
+                titleId, thumbnailUrl, pageUrl, cookie, storage);
         checkCancelled();
         if (thumbnailPath == null && existing != null) thumbnailPath = existing.thumbnailPath;
         db.upsertSeries(new SeriesItem(titleId, title, description, tags,
@@ -754,19 +451,19 @@ public final class SeriesDownloadService extends Service {
             }
 
             String label = current + "/" + episodes.size() + "화 · " + episode.title;
-            int maxAttempts = Math.max(1, api.maxEpisodeAttempts());
-            int saved = downloadExternalEpisodeWithRetry(
-                    titleId, episode, label, current, episodes.size(),
-                    storage, api, maxAttempts);
-            /* Replaced by downloadExternalEpisodeWithRetry.
+            update(label + " 분석 중", current - 1, episodes.size());
+            List<String> images = api.fetchImages(episode.url);
+            checkCancelled();
+            if (images.isEmpty()) {
+                throw new IllegalStateException(episode.number + "화 이미지를 찾지 못했습니다.");
+            }
+            File tempZip = newEpisodeTempZip(titleId, episode.number);
+            int saved = 0;
+            try {
                 try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(tempZip))) {
                     for (int i = 0; i < images.size(); i++) {
                         checkCancelled();
                         String imageUrl = images.get(i);
-
-                        update(label + " · " + (i + 1) + "/" + images.size() +
-                                        "장 다운로드 중",
-                                current - 1, episodes.size());
                         byte[] bytes = api.downloadBytes(imageUrl, episode.url);
                         checkCancelled();
                         String entryName = String.format(Locale.US, "%03d", i + 1) +
@@ -789,7 +486,6 @@ public final class SeriesDownloadService extends Service {
             } finally {
                 tempZip.delete();
             }
-            */
             checkCancelled();
             db.upsertEpisode(new EpisodeItem(
                     titleId, episode.number, episode.title, saved, false));
@@ -799,100 +495,6 @@ public final class SeriesDownloadService extends Service {
         db.setSeriesStatus(titleId, "complete");
         update("완료 · " + episodes.size() + "개 회차", episodes.size(), episodes.size());
         broadcast(sourceName + " 다운로드 완료", true, false);
-    }
-    private int downloadExternalEpisodeWithRetry(
-            String titleId, ExternalEpisode episode, String label,
-            int current, int total, WebtoonStorage storage,
-            ExternalSiteApi api, int maxAttempts) throws Exception {
-        Exception lastError = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            checkCancelled();
-            if (attempt > 1) {
-                long delayMs = Math.max(0L, api.retryDelayMs(attempt - 1));
-                update(label + " · " + attempt + "/" + maxAttempts +
-                                "회 자동 재시작 대기",
-                        current - 1, total);
-                if (delayMs > 0L) {
-                    try {
-                        Thread.sleep(delayMs);
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        throw interrupted;
-                    }
-                }
-                checkCancelled();
-            }
-
-            File tempZip = null;
-            int saved = 0;
-            try {
-                update(label + (attempt > 1 ? " 재분석 중" : " 분석 중"),
-                        current - 1, total);
-                List<String> images = api.fetchImages(episode.url);
-                checkCancelled();
-                if (images.isEmpty()) {
-                    throw new IllegalStateException(
-                            episode.number + "화 이미지를 찾지 못했습니다.");
-                }
-
-                tempZip = newEpisodeTempZip(titleId, episode.number);
-                try (ZipOutputStream zip =
-                             new ZipOutputStream(new FileOutputStream(tempZip))) {
-                    for (int i = 0; i < images.size(); i++) {
-                        checkCancelled();
-                        String imageUrl = images.get(i);
-                        update(label + " · " + (i + 1) + "/" + images.size() +
-                                        "장 다운로드 중",
-                                current - 1, total);
-                        byte[] bytes = api.downloadBytes(imageUrl, episode.url);
-                        checkCancelled();
-                        String entryName = String.format(Locale.US, "%03d", i + 1) +
-                                imageExtension(imageUrl);
-                        zip.putNextEntry(new ZipEntry(entryName));
-                        zip.write(bytes);
-                        zip.closeEntry();
-                        saved++;
-                        if ((i + 1) % 5 == 0 || i + 1 == images.size()) {
-                            update(label + " · " + (i + 1) + "/" + images.size() +
-                                            "장 압축",
-                                    current - 1, total);
-                        }
-                    }
-                }
-                checkCancelled();
-                if (saved == 0) {
-                    throw new IllegalStateException(episode.number + "화 저장 실패");
-                }
-                storage.writeEpisodeZip(titleId, episode.number, tempZip);
-                return saved;
-            } catch (Exception error) {
-                lastError = error;
-                boolean cancelled = cancelRequested.get() ||
-                        Thread.currentThread().isInterrupted() ||
-                        error instanceof InterruptedException ||
-                        error instanceof java.io.InterruptedIOException;
-                if (cancelled) throw error;
-                if (attempt < maxAttempts) {
-                    update(label + " · " + downloadErrorMessage(error) +
-                                    " · 회차 자동 복구 예정 (" + attempt + "/" +
-                                    maxAttempts + "회 실패)",
-                            current - 1, total);
-                }
-            } finally {
-                if (tempZip != null) tempZip.delete();
-            }
-        }
-
-        if (maxAttempts == 1 && lastError != null) throw lastError;
-        throw new java.io.IOException(episode.number + "화 자동 복구 " + maxAttempts +
-                "회 실패 · " + downloadErrorMessage(lastError), lastError);
-    }
-
-    private static String downloadErrorMessage(Throwable error) {
-        if (error == null) return "알 수 없는 연결 오류";
-        String message = error.getMessage();
-        return message == null || message.trim().isEmpty()
-                ? error.getClass().getSimpleName() : message.trim();
     }
 
     private File newEpisodeTempZip(String titleId, int episodeNumber) {
@@ -904,32 +506,14 @@ public final class SeriesDownloadService extends Service {
     }
 
     private String saveExternalThumbnail(String titleId, String thumbnailUrl, String pageUrl,
-                                         String cookie, WebtoonStorage storage,
-                                         ExternalSiteApi api) {
+                                         String cookie, WebtoonStorage storage) {
         if (thumbnailUrl == null || thumbnailUrl.isEmpty()) return null;
         try {
-            byte[] bytes = api.downloadThumbnailBytes(thumbnailUrl, pageUrl);
-            if (!isValidThumbnail(bytes)) {
-                throw new IllegalStateException("썸네일 이미지 형식 오류");
-            }
-            return storage.writeThumbnail(titleId, bytes);
-        } catch (Exception ignored) { }
-        try {
-            byte[] bytes = OptionalImageDownloader.download(
-                    thumbnailUrl, pageUrl, cookie);
-            if (!isValidThumbnail(bytes)) return null;
-            return storage.writeThumbnail(titleId, bytes);
+            return storage.writeThumbnail(titleId,
+                    OptionalImageDownloader.download(thumbnailUrl, pageUrl, cookie));
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private static boolean isValidThumbnail(byte[] bytes) {
-        if (bytes == null || bytes.length < 12) return false;
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inJustDecodeBounds = true;
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-        return options.outWidth > 0 && options.outHeight > 0;
     }
 
     private void checkCancelled() throws InterruptedException {
@@ -990,34 +574,9 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void update(String message, int current, int total) {
-        markProgress();
         getSystemService(NotificationManager.class).notify(
                 NOTIFICATION_ID, notification(message, current, total));
         broadcast(message, false, false);
-    }
-
-    private void markProgress() {
-        lastProgressAtMs = SystemClock.elapsedRealtime();
-    }
-
-    private void checkForStalledDownload() {
-        if (serviceDestroying || manualStopRequested.get() ||
-                !RUNNING.get() || currentTitleId == null) return;
-        if (!SourceSettings.isLowDataMode(this)) {
-            markProgress();
-            return;
-        }
-        long limitMs = TimeUnit.MINUTES.toMillis(
-                SourceSettings.getLowDataRestartMinutes(this));
-        long stalledMs = SystemClock.elapsedRealtime() - lastProgressAtMs;
-        if (stalledMs < limitMs ||
-                !stalledRestartRequested.compareAndSet(false, true)) return;
-
-        cancelRequested.set(true);
-        int minutes = SourceSettings.getLowDataRestartMinutes(this);
-        broadcast("저데이터 모드 · " + minutes +
-                "분간 진행이 없어 자동 이어받기를 준비합니다.", false, false);
-        NetworkRetry.cancel(workerThread);
     }
 
     private android.app.Notification notification(String message, int current, int total) {
@@ -1055,7 +614,6 @@ public final class SeriesDownloadService extends Service {
         RUNNING.set(false);
         currentTitleId = null;
         releaseWakeLock();
-        progressWatchdog.shutdownNow();
         executor.shutdownNow();
         super.onDestroy();
     }

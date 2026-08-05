@@ -170,7 +170,7 @@ public final class ManhwabangApi {
         conn.setConnectTimeout(0);
         conn.setReadTimeout(0);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
+        conn.setRequestProperty("User-Agent", JoatoonApi.USER_AGENT);
         conn.setRequestProperty("Accept", accept);
         if (referer != null) conn.setRequestProperty("Referer", referer);
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
