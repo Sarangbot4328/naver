@@ -1,0 +1,720 @@
+package com.webtoonmap.mobile.ui;
+
+import android.net.Uri;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.RadioGroup;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
+
+import com.webtoonmap.mobile.MainActivity;
+import com.webtoonmap.mobile.R;
+import com.webtoonmap.mobile.download.SeriesDownloadService;
+import com.webtoonmap.mobile.export.TransferImporter;
+import com.webtoonmap.mobile.network.SiteAddressUpdater;
+import com.webtoonmap.mobile.server.LanServerConnector;
+import com.webtoonmap.mobile.server.LanServerSettings;
+import com.webtoonmap.mobile.storage.SourceSettings;
+import com.webtoonmap.mobile.storage.WebtoonStorage;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public final class SettingsChannelView extends FrameLayout {
+    private static final String[] AUTOMATIC_ADDRESS_SOURCES = {
+            SourceSettings.SOURCE_ILILTOON,
+            SourceSettings.SOURCE_BLACKTOON,
+            SourceSettings.SOURCE_WOLFDOT,
+            SourceSettings.SOURCE_TOONKOR,
+            SourceSettings.SOURCE_FUNBE
+    };
+    private final MainActivity activity;
+    private final TextView version;
+    private final RadioGroup sourceGroup;
+    private final RadioGroup viewModeGroup;
+    private final View joatoonAddressBox;
+    private final View ililtoonAddressBox;
+    private final View blacktoonAddressBox;
+    private final View wolfdotAddressBox;
+    private final View hitomiAddressBox;
+    private final View toonkorAddressBox;
+    private final View funbeAddressBox;
+    private final View newtokiAddressBox;
+    private final View serverAddressBox;
+    private final EditText joatoonUrl;
+    private final EditText ililtoonUrl;
+    private final EditText blacktoonUrl;
+    private final EditText wolfdotUrl;
+    private final EditText hitomiUrl;
+    private final EditText toonkorUrl;
+    private final EditText funbeUrl;
+    private final EditText newtokiUrl;
+    private final EditText serverUrl;
+    private final TextView serverConnectionStatus;
+    private final Button siteAddressUpdateButton;
+    private final TextView siteAddressUpdateStatus;
+    private final CheckBox compatibilityMode;
+    private final CheckBox autoAdvance;
+    private final View autoAdvanceOptions;
+    private final EditText autoAdvanceSeconds;
+    private final Button saveAutoAdvanceSeconds;
+    private final CheckBox lowDataMode;
+    private final View lowDataOptions;
+    private final EditText lowDataMinutes;
+    private final Button saveLowDataMinutes;
+    private final Button importButton;
+    private final TextView importStatus;
+    private final Button cleanupButton;
+    private final TextView cleanupStatus;
+    private final ActivityResultLauncher<String[]> importLauncher;
+    private final ExecutorService importExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService cleanupExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService serverExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService addressUpdateExecutor = Executors.newSingleThreadExecutor();
+    private boolean importing;
+    private boolean cleaning;
+    private boolean refreshing;
+    private boolean connectingServer;
+    private boolean updatingSiteAddresses;
+
+    public SettingsChannelView(MainActivity activity) {
+        super(activity);
+        this.activity = activity;
+        LayoutInflater.from(activity).inflate(R.layout.channel_settings, this, true);
+        version = findViewById(R.id.app_version);
+        sourceGroup = findViewById(R.id.source_group);
+        viewModeGroup = findViewById(R.id.view_mode_group);
+        joatoonAddressBox = findViewById(R.id.joatoon_address_box);
+        ililtoonAddressBox = findViewById(R.id.ililtoon_address_box);
+        blacktoonAddressBox = findViewById(R.id.blacktoon_address_box);
+        wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
+        hitomiAddressBox = findViewById(R.id.hitomi_address_box);
+        toonkorAddressBox = findViewById(R.id.toonkor_address_box);
+        funbeAddressBox = findViewById(R.id.funbe_address_box);
+        newtokiAddressBox = findViewById(R.id.newtoki_address_box);
+        serverAddressBox = findViewById(R.id.server_address_box);
+        joatoonUrl = findViewById(R.id.joatoon_url);
+        ililtoonUrl = findViewById(R.id.ililtoon_url);
+        blacktoonUrl = findViewById(R.id.blacktoon_url);
+        wolfdotUrl = findViewById(R.id.wolfdot_url);
+        hitomiUrl = findViewById(R.id.hitomi_url);
+        toonkorUrl = findViewById(R.id.toonkor_url);
+        funbeUrl = findViewById(R.id.funbe_url);
+        newtokiUrl = findViewById(R.id.newtoki_url);
+        serverUrl = findViewById(R.id.server_url);
+        serverConnectionStatus = findViewById(R.id.server_connection_status);
+        siteAddressUpdateButton = findViewById(R.id.refresh_site_addresses);
+        siteAddressUpdateStatus = findViewById(R.id.site_address_update_status);
+        compatibilityMode = findViewById(R.id.compatibility_mode);
+        autoAdvance = findViewById(R.id.auto_advance);
+        autoAdvanceOptions = findViewById(R.id.auto_advance_options);
+        autoAdvanceSeconds = findViewById(R.id.auto_advance_seconds);
+        saveAutoAdvanceSeconds = findViewById(R.id.save_auto_advance_seconds);
+        lowDataMode = findViewById(R.id.low_data_mode);
+        lowDataOptions = findViewById(R.id.low_data_options);
+        lowDataMinutes = findViewById(R.id.low_data_minutes);
+        saveLowDataMinutes = findViewById(R.id.save_low_data_minutes);
+        importButton = findViewById(R.id.import_transfer);
+        importStatus = findViewById(R.id.import_status);
+        cleanupButton = findViewById(R.id.cleanup_temp_files);
+        cleanupStatus = findViewById(R.id.cleanup_temp_status);
+        importLauncher = activity.registerForActivityResult(
+                new ActivityResultContracts.OpenDocument(), uri -> {
+                    if (uri != null) importTransfer(uri);
+                });
+        sourceGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (refreshing) return;
+            String source = sourceForCheckedId(checkedId);
+            SourceSettings.setSource(activity, source);
+            updateAddressVisibility(source);
+            activity.applyChannelSettings();
+            Toast.makeText(activity, SourceSettings.channelLabel(activity) +
+                    " 채널로 변경했습니다.", Toast.LENGTH_SHORT).show();
+        });
+        viewModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (refreshing) return;
+            String mode = checkedId == R.id.view_mode_page
+                    ? SourceSettings.VIEW_MODE_PAGE
+                    : checkedId == R.id.view_mode_page_fit
+                    ? SourceSettings.VIEW_MODE_PAGE_FIT : SourceSettings.VIEW_MODE_SCROLL;
+            SourceSettings.setViewMode(activity, mode);
+            String message = checkedId == R.id.view_mode_page
+                    ? "만화책 모드 2(가로 폭 채우기)로 변경했습니다."
+                    : checkedId == R.id.view_mode_page_fit
+                    ? "만화책 모드 1(한 페이지 전체 보기)로 변경했습니다."
+                    : "웹툰 방식(아래로 스크롤)으로 변경했습니다.";
+            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+        });
+        compatibilityMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (refreshing) return;
+            SourceSettings.setCompatibilityMode(activity, isChecked);
+            activity.applyChannelSettings();
+            Toast.makeText(activity, isChecked
+                    ? "\uD638\uD658 \uC811\uC18D \uBAA8\uB4DC\uB97C \uCF30\uC2B5\uB2C8\uB2E4."
+                    : "\uD638\uD658 \uC811\uC18D \uBAA8\uB4DC\uB97C \uAEC8\uC2B5\uB2C8\uB2E4.",
+                    Toast.LENGTH_SHORT).show();
+        });
+        autoAdvance.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (refreshing) return;
+            SourceSettings.setAutoAdvanceEnabled(activity, isChecked);
+            updateAutoAdvanceControls(isChecked);
+            Toast.makeText(activity, isChecked
+                            ? "자동 넘기기를 켰습니다."
+                            : "자동 넘기기를 껐습니다.",
+                    Toast.LENGTH_SHORT).show();
+        });
+        saveAutoAdvanceSeconds.setOnClickListener(v -> saveAutoAdvanceSeconds());
+        lowDataMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (refreshing) return;
+            SourceSettings.setLowDataMode(activity, isChecked);
+            updateLowDataControls(isChecked);
+            Toast.makeText(activity, isChecked
+                            ? "저데이터 모드를 켰습니다."
+                            : "저데이터 모드를 껐습니다.",
+                    Toast.LENGTH_SHORT).show();
+        });
+        saveLowDataMinutes.setOnClickListener(v -> saveLowDataMinutes());
+        findViewById(R.id.save_joatoon_url).setOnClickListener(v -> saveJoatoonUrl());
+        findViewById(R.id.save_ililtoon_url).setOnClickListener(v -> saveIliltoonUrl());
+        findViewById(R.id.save_blacktoon_url).setOnClickListener(v -> saveBlacktoonUrl());
+        findViewById(R.id.save_wolfdot_url).setOnClickListener(v -> saveWolfdotUrl());
+        findViewById(R.id.save_hitomi_url).setOnClickListener(v -> saveHitomiUrl());
+        findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
+        findViewById(R.id.save_funbe_url).setOnClickListener(v -> saveFunbeUrl());
+        findViewById(R.id.save_newtoki_url).setOnClickListener(v -> saveNewtokiUrl());
+        findViewById(R.id.save_server_url).setOnClickListener(v -> saveServerUrl());
+        siteAddressUpdateButton.setOnClickListener(v -> refreshSiteAddresses());
+        importButton.setOnClickListener(v -> {
+            if (!importing) importLauncher.launch(new String[]{"application/zip", "application/octet-stream"});
+        });
+        cleanupButton.setOnClickListener(v -> confirmTemporaryCleanup());
+        refresh();
+    }
+
+    public void refresh() {
+        refreshing = true;
+        String source = SourceSettings.getSource(activity);
+        sourceGroup.check(checkedIdForSource(source));
+        updateAddressVisibility(source);
+        String viewMode = SourceSettings.getViewMode(activity);
+        viewModeGroup.check(SourceSettings.VIEW_MODE_PAGE.equals(viewMode)
+                ? R.id.view_mode_page
+                : SourceSettings.VIEW_MODE_PAGE_FIT.equals(viewMode)
+                ? R.id.view_mode_page_fit : R.id.view_mode_scroll);
+        joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
+        ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
+        wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
+        hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
+        toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
+        String host = LanServerSettings.getHost(activity);
+        int port = LanServerSettings.getPort(activity);
+        if (host != null && !host.isEmpty()) {
+            serverUrl.setText(host + ":" + port);
+            String name = LanServerSettings.getDisplayName(activity);
+            serverConnectionStatus.setText(name == null || name.isEmpty()
+                    ? "저장된 주소: " + host + ":" + port
+                    : "저장된 서버: " + name + " · " + host + ":" + port);
+        } else {
+            serverUrl.setText("");
+            serverConnectionStatus.setText("주소가 없으면 같은 Wi-Fi에서 자동으로 서버를 찾습니다.");
+        }
+        compatibilityMode.setChecked(SourceSettings.isCompatibilityMode(activity));
+        boolean autoAdvanceEnabled = SourceSettings.isAutoAdvanceEnabled(activity);
+        autoAdvance.setChecked(autoAdvanceEnabled);
+        autoAdvanceSeconds.setText(String.valueOf(
+                SourceSettings.getAutoAdvanceSeconds(activity)));
+        updateAutoAdvanceControls(autoAdvanceEnabled);
+        boolean lowDataEnabled = SourceSettings.isLowDataMode(activity);
+        lowDataMode.setChecked(lowDataEnabled);
+        lowDataMinutes.setText(String.valueOf(
+                SourceSettings.getLowDataRestartMinutes(activity)));
+        updateLowDataControls(lowDataEnabled);
+        cleanupButton.setEnabled(!cleaning && !importing &&
+                !SeriesDownloadService.isRunning());
+        try {
+            String name = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0).versionName;
+            version.setText("버전 " + name);
+        } catch (Exception ignored) {
+            version.setText("\uBC84\uC804 1.5.12");
+        }
+        refreshing = false;
+    }
+
+    private void saveAutoAdvanceSeconds() {
+        String raw = autoAdvanceSeconds.getText().toString().trim();
+        int seconds;
+        try {
+            seconds = Integer.parseInt(raw);
+        } catch (NumberFormatException ignored) {
+            Toast.makeText(activity, "넘기기 간격을 초 단위 숫자로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!SourceSettings.setAutoAdvanceSeconds(activity, seconds)) {
+            Toast.makeText(activity, "넘기기 간격은 1초부터 3600초 사이로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        autoAdvanceSeconds.setText(String.valueOf(seconds));
+        Toast.makeText(activity, "자동 넘기기 간격을 " + seconds + "초로 저장했습니다.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateAutoAdvanceControls(boolean enabled) {
+        autoAdvanceOptions.setAlpha(enabled ? 1f : 0.45f);
+        autoAdvanceSeconds.setEnabled(enabled);
+        saveAutoAdvanceSeconds.setEnabled(enabled);
+    }
+
+    private void saveLowDataMinutes() {
+        String raw = lowDataMinutes.getText().toString().trim();
+        int minutes;
+        try {
+            minutes = Integer.parseInt(raw);
+        } catch (NumberFormatException ignored) {
+            Toast.makeText(activity, "대기 시간을 분 단위 숫자로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!SourceSettings.setLowDataRestartMinutes(activity, minutes)) {
+            Toast.makeText(activity, "대기 시간은 1분부터 1440분 사이로 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        lowDataMinutes.setText(String.valueOf(minutes));
+        Toast.makeText(activity, "자동 이어받기 대기 시간을 " + minutes + "분으로 저장했습니다.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateLowDataControls(boolean enabled) {
+        lowDataOptions.setAlpha(enabled ? 1f : 0.45f);
+        lowDataMinutes.setEnabled(enabled);
+        saveLowDataMinutes.setEnabled(enabled);
+    }
+
+    private void importTransfer(Uri uri) {
+        if (importing) return;
+        importing = true;
+        importButton.setEnabled(false);
+        cleanupButton.setEnabled(false);
+        importButton.setText("가져오는 중…");
+        importStatus.setText("파일을 확인하는 중…");
+        AlertDialog progressDialog = new AlertDialog.Builder(activity)
+                .setTitle("데이터 가져오기")
+                .setMessage("파일을 확인하는 중…")
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+        importExecutor.execute(() -> {
+            try {
+                TransferImporter.Result result = TransferImporter.importArchive(activity, uri,
+                        (current, total, title) -> post(() -> {
+                            String text = current + "/" + total + " · ‘" + title + "’ 복원 중";
+                            importStatus.setText(text);
+                            progressDialog.setMessage(text);
+                        }));
+                post(() -> {
+                    importing = false;
+                    importButton.setEnabled(true);
+                    cleanupButton.setEnabled(!cleaning && !SeriesDownloadService.isRunning());
+                    importButton.setText("데이터 가져오기");
+                    activity.refreshDownloads();
+                    String summary = "가져오기 완료 · " + result.imported.size() + "개 작품";
+                    if (!result.errors.isEmpty()) {
+                        summary += " · 오류 " + result.errors.size() + "개";
+                        importStatus.setText(summary + "\n" + result.errors.get(0));
+                    } else {
+                        importStatus.setText(summary);
+                    }
+                    progressDialog.dismiss();
+                    new AlertDialog.Builder(activity)
+                            .setTitle("가져오기 완료")
+                            .setMessage(summary + (result.errors.isEmpty() ? "" : "\n" + result.errors.get(0)))
+                            .setPositiveButton("확인", null)
+                            .show();
+                    Toast.makeText(activity, summary, Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? "가져오기에 실패했습니다." : error.getMessage();
+                post(() -> {
+                    importing = false;
+                    importButton.setEnabled(true);
+                    cleanupButton.setEnabled(!cleaning && !SeriesDownloadService.isRunning());
+                    importButton.setText("데이터 가져오기");
+                    importStatus.setText("가져오기 실패 · " + message);
+                    progressDialog.dismiss();
+                    new AlertDialog.Builder(activity)
+                            .setTitle("가져오기 실패")
+                            .setMessage(message)
+                            .setPositiveButton("확인", null)
+                            .show();
+                    Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void confirmTemporaryCleanup() {
+        if (cleaning) return;
+        if (importing) {
+            Toast.makeText(activity, "가져오기가 끝난 뒤 임시 파일을 삭제해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (SeriesDownloadService.isRunning()) {
+            Toast.makeText(activity, "다운로드가 끝난 뒤 임시 파일을 삭제해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("임시 파일 삭제")
+                .setMessage("내보내기·가져오기·뷰어 캐시와 중단된 다운로드 조각만 삭제합니다.\n\n" +
+                        "다운로드가 완료된 웹툰, 회차 ZIP, 썸네일과 작품 정보는 삭제하지 않습니다.")
+                .setNegativeButton("취소", null)
+                .setPositiveButton("삭제", (dialog, which) -> cleanupTemporaryFiles())
+                .show();
+    }
+
+    private void cleanupTemporaryFiles() {
+        if (cleaning) return;
+        cleaning = true;
+        cleanupButton.setEnabled(false);
+        cleanupButton.setText("삭제 중…");
+        importButton.setEnabled(false);
+        cleanupStatus.setText("안전한 임시 파일을 확인하는 중…");
+        cleanupExecutor.execute(() -> {
+            WebtoonStorage.CleanupResult result =
+                    WebtoonStorage.cleanupTemporaryFiles(activity);
+            post(() -> {
+                cleaning = false;
+                cleanupButton.setEnabled(!importing && !SeriesDownloadService.isRunning());
+                cleanupButton.setText("임시 파일 삭제");
+                importButton.setEnabled(!importing);
+                String message = result.deletedFiles > 0
+                        ? "임시 파일 " + result.deletedFiles + "개를 삭제했습니다."
+                        : "삭제할 임시 파일이 없습니다.";
+                if (result.failedPaths > 0) {
+                    message += " 삭제하지 못한 위치 " + result.failedPaths + "곳";
+                }
+                cleanupStatus.setText(message);
+                Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+            });
+        });
+    }
+
+    private void refreshSiteAddresses() {
+        if (updatingSiteAddresses) return;
+        updatingSiteAddresses = true;
+        siteAddressUpdateButton.setEnabled(false);
+        siteAddressUpdateButton.setText("주소 확인 중…");
+        siteAddressUpdateStatus.setText("메이저링크에서 최신 주소를 확인하는 중…");
+
+        addressUpdateExecutor.execute(() -> {
+            try {
+                Map<String, String> addresses = SiteAddressUpdater.fetch();
+                List<String> changed = new ArrayList<>();
+                List<String> unchanged = new ArrayList<>();
+                List<String> missing = new ArrayList<>();
+                StringBuilder details = new StringBuilder();
+
+                for (String source : AUTOMATIC_ADDRESS_SOURCES) {
+                    String name = automaticSourceName(source);
+                    String oldUrl = currentUrlForSource(source);
+                    String newUrl = addresses.get(source);
+                    if (newUrl == null) {
+                        missing.add(name);
+                        details.append("• ").append(name)
+                                .append(": 찾지 못함 · 기존 주소 유지\n");
+                    } else if (newUrl.equals(oldUrl)) {
+                        unchanged.add(name);
+                        details.append("• ").append(name)
+                                .append(": 최신 주소 유지\n");
+                    } else {
+                        changed.add(name);
+                        details.append("• ").append(name).append("\n  ")
+                                .append(oldUrl).append("\n  → ").append(newUrl).append("\n");
+                    }
+                }
+
+                int applied = SourceSettings.applyAutomaticUrls(activity, addresses);
+                if (applied == 0) {
+                    throw new IllegalStateException("저장할 수 있는 주소가 없습니다.");
+                }
+                post(() -> finishSiteAddressUpdate(changed, unchanged, missing,
+                        details.toString().trim()));
+            } catch (Exception error) {
+                String detail = error.getMessage();
+                if (detail == null || detail.trim().isEmpty()) {
+                    detail = "주소 제공 사이트에 연결하지 못했습니다.";
+                }
+                String message = detail;
+                post(() -> failSiteAddressUpdate(message));
+            }
+        });
+    }
+
+    private void finishSiteAddressUpdate(List<String> changed, List<String> unchanged,
+                                         List<String> missing, String details) {
+        updatingSiteAddresses = false;
+        siteAddressUpdateButton.setEnabled(true);
+        siteAddressUpdateButton.setText("사이트 주소 갱신");
+        ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
+        wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
+        toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
+        activity.applyChannelSettings();
+
+        String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 최신 " +
+                unchanged.size() + "개";
+        if (!missing.isEmpty()) summary += " · 기존 유지 " + missing.size() + "개";
+        siteAddressUpdateStatus.setText(summary);
+        new AlertDialog.Builder(activity)
+                .setTitle("사이트 주소 갱신 완료")
+                .setMessage(summary + "\n\n" + details)
+                .setPositiveButton("확인", null)
+                .show();
+        Toast.makeText(activity, summary, Toast.LENGTH_LONG).show();
+    }
+
+    private void failSiteAddressUpdate(String detail) {
+        updatingSiteAddresses = false;
+        siteAddressUpdateButton.setEnabled(true);
+        siteAddressUpdateButton.setText("사이트 주소 갱신");
+        siteAddressUpdateStatus.setText("갱신 실패 · 기존 주소를 유지했습니다.");
+        new AlertDialog.Builder(activity)
+                .setTitle("사이트 주소 갱신 실패")
+                .setMessage(detail + "\n\n기존 주소는 변경하지 않았습니다.")
+                .setPositiveButton("확인", null)
+                .show();
+    }
+
+    private String currentUrlForSource(String source) {
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) {
+            return SourceSettings.getIliltoonUrl(activity);
+        }
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) {
+            return SourceSettings.getBlacktoonUrl(activity);
+        }
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) {
+            return SourceSettings.getWolfdotUrl(activity);
+        }
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) {
+            return SourceSettings.getToonkorUrl(activity);
+        }
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) {
+            return SourceSettings.getFunbeUrl(activity);
+        }
+        return "";
+    }
+
+    private String automaticSourceName(String source) {
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) return "일일툰";
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return "블랙툰";
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return "늑대닷컴";
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) return "툰코";
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) return "펀비";
+        return source;
+    }
+    private void saveJoatoonUrl() {
+        if (!SourceSettings.setJoatoonUrl(activity, joatoonUrl.getText().toString())) {
+            Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        joatoonUrl.setText(SourceSettings.getJoatoonUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "조아툰 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveIliltoonUrl() {
+        if (!SourceSettings.setIliltoonUrl(activity, ililtoonUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        ililtoonUrl.setText(SourceSettings.getIliltoonUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "일일툰 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveBlacktoonUrl() {
+        if (!SourceSettings.setBlacktoonUrl(activity, blacktoonUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        blacktoonUrl.setText(SourceSettings.getBlacktoonUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "블랙툰 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveWolfdotUrl() {
+        if (!SourceSettings.setWolfdotUrl(activity, wolfdotUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        wolfdotUrl.setText(SourceSettings.getWolfdotUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "늑대닷컴 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveHitomiUrl() {
+        if (!SourceSettings.setHitomiUrl(activity, hitomiUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        hitomiUrl.setText(SourceSettings.getHitomiUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "히토미 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveToonkorUrl() {
+        if (!SourceSettings.setToonkorUrl(activity, toonkorUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "\uD230\uCF54 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveFunbeUrl() {
+        if (!SourceSettings.setFunbeUrl(activity, funbeUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "\uD380\uBE44 \uC8FC\uC18C\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveNewtokiUrl() {
+        if (!SourceSettings.setNewtokiUrl(activity, newtokiUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "뉴토끼 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveServerUrl() {
+        if (connectingServer) return;
+        String raw = serverUrl.getText().toString().trim();
+        if (raw.isEmpty()) {
+            // try auto discovery and save
+            connectingServer = true;
+            serverConnectionStatus.setText("같은 Wi-Fi에서 서버를 찾는 중…");
+            serverExecutor.execute(() -> {
+                try {
+                    LanServerConnector.Connection connection = LanServerConnector.connect(activity);
+                    post(() -> {
+                        connectingServer = false;
+                        if (connection == null) {
+                            serverConnectionStatus.setText("서버가 연결되지 않았습니다");
+                            Toast.makeText(activity, "서버가 연결되지 않았습니다", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        serverUrl.setText(connection.host + ":" + connection.port);
+                        serverConnectionStatus.setText("연결됨 · " + connection.host + ":" + connection.port);
+                        activity.applyChannelSettings();
+                        Toast.makeText(activity, "서버에 연결했습니다.", Toast.LENGTH_SHORT).show();
+                    });
+                } catch (Exception error) {
+                    post(() -> {
+                        connectingServer = false;
+                        serverConnectionStatus.setText("서버가 연결되지 않았습니다");
+                        Toast.makeText(activity, "서버가 연결되지 않았습니다", Toast.LENGTH_LONG).show();
+                    });
+                }
+            });
+            return;
+        }
+        connectingServer = true;
+        serverConnectionStatus.setText("서버에 연결하는 중…");
+        serverExecutor.execute(() -> {
+            try {
+                LanServerConnector.Connection connection =
+                        LanServerConnector.connectManual(activity, raw);
+                post(() -> {
+                    connectingServer = false;
+                    serverUrl.setText(connection.host + ":" + connection.port);
+                    serverConnectionStatus.setText("연결됨 · " + connection.host + ":" + connection.port);
+                    activity.applyChannelSettings();
+                    Toast.makeText(activity, "서버 주소를 저장하고 연결했습니다.",
+                            Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null
+                        ? "서버가 연결되지 않았습니다" : error.getMessage();
+                post(() -> {
+                    connectingServer = false;
+                    serverConnectionStatus.setText(message);
+                    Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void invalidUrl() {
+        Toast.makeText(activity, "https://로 시작하는 올바른 주소를 입력해 주세요.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    private String sourceForCheckedId(int checkedId) {
+        if (checkedId == R.id.source_joatoon) return SourceSettings.SOURCE_JOATOON;
+        if (checkedId == R.id.source_ililtoon) return SourceSettings.SOURCE_ILILTOON;
+        if (checkedId == R.id.source_blacktoon) return SourceSettings.SOURCE_BLACKTOON;
+        if (checkedId == R.id.source_wolfdot) return SourceSettings.SOURCE_WOLFDOT;
+        if (checkedId == R.id.source_hitomi) return SourceSettings.SOURCE_HITOMI;
+        if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
+        if (checkedId == R.id.source_funbe) return SourceSettings.SOURCE_FUNBE;
+        if (checkedId == R.id.source_newtoki) return SourceSettings.SOURCE_NEWTOKI;
+        if (checkedId == R.id.source_site_addresses) return SourceSettings.SOURCE_SITE_ADDRESSES;
+        if (checkedId == R.id.source_server) return SourceSettings.SOURCE_SERVER;
+        return SourceSettings.SOURCE_NAVER;
+    }
+
+    private int checkedIdForSource(String source) {
+        if (SourceSettings.SOURCE_JOATOON.equals(source)) return R.id.source_joatoon;
+        if (SourceSettings.SOURCE_ILILTOON.equals(source)) return R.id.source_ililtoon;
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) return R.id.source_blacktoon;
+        if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return R.id.source_wolfdot;
+        if (SourceSettings.SOURCE_HITOMI.equals(source)) return R.id.source_hitomi;
+        if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
+        if (SourceSettings.SOURCE_FUNBE.equals(source)) return R.id.source_funbe;
+        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return R.id.source_newtoki;
+        if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) return R.id.source_site_addresses;
+        if (SourceSettings.SOURCE_SERVER.equals(source)) return R.id.source_server;
+        return R.id.source_naver;
+    }
+
+    private void updateAddressVisibility(String source) {
+        joatoonAddressBox.setVisibility(SourceSettings.SOURCE_JOATOON.equals(source) ? VISIBLE : GONE);
+        ililtoonAddressBox.setVisibility(SourceSettings.SOURCE_ILILTOON.equals(source) ? VISIBLE : GONE);
+        blacktoonAddressBox.setVisibility(SourceSettings.SOURCE_BLACKTOON.equals(source) ? VISIBLE : GONE);
+        wolfdotAddressBox.setVisibility(SourceSettings.SOURCE_WOLFDOT.equals(source) ? VISIBLE : GONE);
+        hitomiAddressBox.setVisibility(SourceSettings.SOURCE_HITOMI.equals(source) ? VISIBLE : GONE);
+        toonkorAddressBox.setVisibility(SourceSettings.SOURCE_TOONKOR.equals(source) ? VISIBLE : GONE);
+        funbeAddressBox.setVisibility(SourceSettings.SOURCE_FUNBE.equals(source) ? VISIBLE : GONE);
+        newtokiAddressBox.setVisibility(SourceSettings.SOURCE_NEWTOKI.equals(source) ? VISIBLE : GONE);
+        serverAddressBox.setVisibility(SourceSettings.SOURCE_SERVER.equals(source) ? VISIBLE : GONE);
+    }
+
+}
+
