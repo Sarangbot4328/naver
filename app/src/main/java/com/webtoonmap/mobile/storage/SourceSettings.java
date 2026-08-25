@@ -27,7 +27,8 @@ public final class SourceSettings {
     public static final String DEFAULT_HITOMI_URL = "https://hitomi.la";
     public static final String DEFAULT_TOONKOR_URL = "https://tkor137.com";
     public static final String DEFAULT_FUNBE_URL = "https://funbe662.com";
-    public static final String DEFAULT_NEWTOKI_URL = "https://newto26.com";
+    public static final String DEFAULT_NEWTOKI_URL = "https://newto29.com";
+    private static final String LEGACY_DEFAULT_NEWTOKI_URL = "https://newto26.com";
     public static final String SITE_ADDRESSES_URL =
             "https://majorlink2.com/%EC%9B%B9%ED%88%B0";
     public static final String VIEW_MODE_SCROLL = "scroll";
@@ -141,7 +142,7 @@ public final class SourceSettings {
     public static String getSource(Context context) {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String source = preferences.getString(KEY_SOURCE, SOURCE_NAVER);
-        if (SOURCE_MANHWABANG.equals(source)) {
+        if (SOURCE_MANHWABANG.equals(source) || SOURCE_JOATOON.equals(source)) {
             preferences.edit().putString(KEY_SOURCE, SOURCE_NAVER).apply();
             return SOURCE_NAVER;
         }
@@ -240,7 +241,13 @@ public final class SourceSettings {
     }
 
     public static String getNewtokiUrl(Context context) {
-        return getUrl(context, KEY_NEWTOKI_URL, DEFAULT_NEWTOKI_URL);
+        String value = getUrl(context, KEY_NEWTOKI_URL, DEFAULT_NEWTOKI_URL);
+        if (LEGACY_DEFAULT_NEWTOKI_URL.equalsIgnoreCase(value)) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_NEWTOKI_URL, DEFAULT_NEWTOKI_URL).apply();
+            return DEFAULT_NEWTOKI_URL;
+        }
+        return value;
     }
 
     public static boolean setNewtokiUrl(Context context, String raw) {
@@ -318,8 +325,7 @@ public final class SourceSettings {
     }
 
     private static boolean isKnownSource(String source) {
-        return SOURCE_NAVER.equals(source) || SOURCE_JOATOON.equals(source) ||
-                SOURCE_ILILTOON.equals(source) ||
+        return SOURCE_NAVER.equals(source) || SOURCE_ILILTOON.equals(source) ||
                 SOURCE_BLACKTOON.equals(source) || SOURCE_WOLFDOT.equals(source) ||
                 SOURCE_HITOMI.equals(source) || SOURCE_TOONKOR.equals(source) ||
                 SOURCE_FUNBE.equals(source) || SOURCE_NEWTOKI.equals(source) ||
