@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.BitmapFactory;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -59,6 +60,7 @@ public final class SeriesDownloadService extends Service {
     private static final String ACTION_PROCESS = "com.webtoonmap.mobile.PROCESS_DOWNLOAD_QUEUE";
     private static final String ACTION_STOP = "com.webtoonmap.mobile.STOP_CURRENT_DOWNLOAD";
     private static final String CHANNEL_ID = "webtoon_downloads";
+    private static final String NEWTOKI_PAGE_FAILURE_PREFS = "newtoki_page_failures";
     private static final int NOTIFICATION_ID = 2001;
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static volatile String currentTitleId;
@@ -421,6 +423,17 @@ public final class SeriesDownloadService extends Service {
             return 0L;
         }
 
+        default int recordImageFailure(String titleId, int episodeNumber,
+                                       int imagePosition, String imageUrl,
+                                       Exception error) {
+            return 0;
+        }
+
+        default void imageDownloaded(String titleId, int episodeNumber,
+                                     int imagePosition, String imageUrl) { }
+
+        default void episodeCompleted(String titleId, int episodeNumber) { }
+
     }
 
     private static final class ExternalEpisode {
@@ -432,6 +445,16 @@ public final class SeriesDownloadService extends Service {
             this.number = number;
             this.title = title;
             this.url = url;
+        }
+    }
+
+    private static final class ExternalEpisodeResult {
+        final int saved;
+        final int skipped;
+
+        ExternalEpisodeResult(int saved, int skipped) {
+            this.saved = saved;
+            this.skipped = skipped;
         }
     }
 
@@ -701,6 +724,26 @@ public final class SeriesDownloadService extends Service {
                         return completedPosition % 10 == 0 ? 60_000L : 10_000L;
                     }
 
+                    @Override public int recordImageFailure(
+                            String seriesId, int episodeNumber, int imagePosition,
+                            String imageUrl, Exception error) {
+                        if (!NewtokiApi.isSkippablePageFailure(error)) return 0;
+                        return incrementNewtokiPageFailure(
+                                seriesId, episodeNumber, imagePosition);
+                    }
+
+                    @Override public void imageDownloaded(
+                            String seriesId, int episodeNumber, int imagePosition,
+                            String imageUrl) {
+                        clearNewtokiPageFailure(
+                                seriesId, episodeNumber, imagePosition);
+                    }
+
+                    @Override public void episodeCompleted(
+                            String seriesId, int episodeNumber) {
+                        clearNewtokiEpisodeFailures(seriesId, episodeNumber);
+                    }
+
                 });
     }
     private void downloadHitomi(String titleId) throws Exception {
@@ -783,7 +826,7 @@ public final class SeriesDownloadService extends Service {
 
             String label = current + "/" + episodes.size() + "화 · " + episode.title;
             int maxAttempts = Math.max(1, api.maxEpisodeAttempts());
-            int saved = downloadExternalEpisodeWithRetry(
+            ExternalEpisodeResult result = downloadExternalEpisodeWithRetry(
                     titleId, episode, label, current, episodes.size(),
                     storage, api, maxAttempts);
             /* Replaced by downloadExternalEpisodeWithRetry.
@@ -819,9 +862,12 @@ public final class SeriesDownloadService extends Service {
             }
             */
             db.upsertEpisode(new EpisodeItem(
-                    titleId, episode.number, episode.title, saved, false));
+                    titleId, episode.number, episode.title, result.saved, false));
+            api.episodeCompleted(titleId, episode.number);
             checkCancelled();
-            update(label + " ZIP 저장 완료", current, episodes.size());
+            update(label + " ZIP 저장 완료" +
+                            (result.skipped > 0 ? " · " + result.skipped + "장 제외" : ""),
+                    current, episodes.size());
             if (current < episodes.size()) {
                 long pacingDelayMs = Math.max(0L, api.postEpisodeDelayMs(current));
                 if (pacingDelayMs > 0L) {
@@ -837,7 +883,7 @@ public final class SeriesDownloadService extends Service {
         update("완료 · " + episodes.size() + "개 회차", episodes.size(), episodes.size());
         broadcast(sourceName + " 다운로드 완료", true, false);
     }
-    private int downloadExternalEpisodeWithRetry(
+    private ExternalEpisodeResult downloadExternalEpisodeWithRetry(
             String titleId, ExternalEpisode episode, String label,
             int current, int total, WebtoonStorage storage,
             ExternalSiteApi api, int maxAttempts) throws Exception {
@@ -862,6 +908,7 @@ public final class SeriesDownloadService extends Service {
 
             File tempZip = null;
             int saved = 0;
+            int skipped = 0;
             try {
                 update(label + (attempt > 1 ? " 재분석 중" : " 분석 중"),
                         current - 1, total);
@@ -881,8 +928,29 @@ public final class SeriesDownloadService extends Service {
                         update(label + " · " + (i + 1) + "/" + images.size() +
                                         "장 다운로드 중",
                                 current - 1, total);
-                        byte[] bytes = api.downloadBytes(imageUrl, episode.url);
+                        byte[] bytes;
+                        try {
+                            bytes = api.downloadBytes(imageUrl, episode.url);
+                        } catch (Exception imageError) {
+                            int failureCount = api.recordImageFailure(
+                                    titleId, episode.number, i + 1, imageUrl, imageError);
+                            if (failureCount >= 3) {
+                                skipped++;
+                                update(label + " · " + (i + 1) + "/" + images.size() +
+                                                "장 · HTTP 503 3회 실패로 제외",
+                                        current - 1, total);
+                                continue;
+                            }
+                            if (failureCount > 0) {
+                                throw new java.io.IOException(
+                                        episode.number + "화 " + (i + 1) + "번째 이미지 HTTP 503 " +
+                                                "(" + failureCount + "/3회 실패)", imageError);
+                            }
+                            throw imageError;
+                        }
                         checkCancelled();
+                        api.imageDownloaded(
+                                titleId, episode.number, i + 1, imageUrl);
                         String entryName = String.format(Locale.US, "%03d", i + 1) +
                                 imageExtension(imageUrl);
                         zip.putNextEntry(new ZipEntry(entryName));
@@ -903,7 +971,7 @@ public final class SeriesDownloadService extends Service {
                 update(label + " · ZIP 최종 저장 중",
                         current - 1, total);
                 storage.writeEpisodeZip(titleId, episode.number, tempZip);
-                return saved;
+                return new ExternalEpisodeResult(saved, skipped);
             } catch (Exception error) {
                 lastError = error;
                 boolean cancelled = cancelRequested.get() ||
@@ -986,6 +1054,48 @@ public final class SeriesDownloadService extends Service {
             if (remaining <= 0L) return;
             Thread.sleep(Math.min(1_000L, remaining));
         }
+    }
+
+    private int incrementNewtokiPageFailure(String titleId, int episodeNumber,
+                                            int imagePosition) {
+        SharedPreferences preferences = getSharedPreferences(
+                NEWTOKI_PAGE_FAILURE_PREFS, Context.MODE_PRIVATE);
+        String key = newtokiPageFailureKey(
+                titleId, episodeNumber, imagePosition);
+        int count = Math.min(3, preferences.getInt(key, 0) + 1);
+        preferences.edit().putInt(key, count).commit();
+        return count;
+    }
+
+    private void clearNewtokiPageFailure(String titleId, int episodeNumber,
+                                         int imagePosition) {
+        SharedPreferences preferences = getSharedPreferences(
+                NEWTOKI_PAGE_FAILURE_PREFS, Context.MODE_PRIVATE);
+        String key = newtokiPageFailureKey(
+                titleId, episodeNumber, imagePosition);
+        if (preferences.contains(key)) preferences.edit().remove(key).commit();
+    }
+
+    private void clearNewtokiEpisodeFailures(String titleId, int episodeNumber) {
+        SharedPreferences preferences = getSharedPreferences(
+                NEWTOKI_PAGE_FAILURE_PREFS, Context.MODE_PRIVATE);
+        String prefix = newtokiPageFailurePrefix(titleId, episodeNumber);
+        SharedPreferences.Editor editor = null;
+        for (String key : preferences.getAll().keySet()) {
+            if (!key.startsWith(prefix)) continue;
+            if (editor == null) editor = preferences.edit();
+            editor.remove(key);
+        }
+        if (editor != null) editor.commit();
+    }
+
+    private static String newtokiPageFailureKey(String titleId, int episodeNumber,
+                                                int imagePosition) {
+        return newtokiPageFailurePrefix(titleId, episodeNumber) + imagePosition;
+    }
+
+    private static String newtokiPageFailurePrefix(String titleId, int episodeNumber) {
+        return titleId + "|" + episodeNumber + "|";
     }
 
 

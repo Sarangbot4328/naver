@@ -201,9 +201,10 @@ public final class NewtokiApi {
         HttpURLConnection connection = open(url, referer, cookie, "image/*,*/*;q=0.8");
         try {
             int code = connection.getResponseCode();
-            if (code == 403 || code == 503) {
+            if (code == 403) {
                 throw authenticationExpired();
             }
+            if (code == 503) throw new IOException("뉴토끼 이미지 HTTP 503");
             if (code < 200 || code >= 300) {
                 throw new IOException("뉴토끼 이미지 HTTP " + code);
             }
@@ -292,6 +293,16 @@ public final class NewtokiApi {
     private static IOException authenticationExpired() {
         return new IOException("뉴토끼 접속 인증이 만료되었습니다. " +
                 "뉴토끼 채널에서 사이트를 갱신한 뒤 다운로드 탭에서 이어받기를 눌러 주세요.");
+    }
+
+    public static boolean isSkippablePageFailure(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains("뉴토끼 이미지 HTTP 503")) return true;
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static void collectEpisodes(Document document, Map<String, RawEpisode> unique) {
