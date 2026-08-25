@@ -1,17 +1,13 @@
 package com.webtoonmap.mobile;
 
 import android.Manifest;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -20,7 +16,6 @@ import androidx.core.content.ContextCompat;
 
 import com.webtoonmap.mobile.activation.ActivationActivity;
 import com.webtoonmap.mobile.activation.ActivationStore;
-import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.ui.DownloadChannelView;
 import com.webtoonmap.mobile.ui.NaverChannelView;
 import com.webtoonmap.mobile.ui.ServerChannelView;
@@ -38,15 +33,6 @@ public final class MainActivity extends AppCompatActivity {
     private DownloadChannelView downloadsView;
     private SettingsChannelView settingsView;
     private int selectedChannel = 0;
-    private boolean newtokiRefreshReceiverRegistered;
-    private long handlingNewtokiRefreshRequestId;
-    private final BroadcastReceiver newtokiRefreshReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context context, Intent intent) {
-            long requestId = intent.getLongExtra(
-                    SeriesDownloadService.EXTRA_NEWTOKI_REFRESH_REQUEST_ID, 0L);
-            handleNewtokiRefreshRequest(requestId);
-        }
-    };
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (!ActivationStore.isActivated(this)) {
@@ -166,50 +152,6 @@ public final class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.POST_NOTIFICATIONS}, 400);
         }
-    }
-
-    @Override protected void onStart() {
-        super.onStart();
-        if (!newtokiRefreshReceiverRegistered) {
-            ContextCompat.registerReceiver(this, newtokiRefreshReceiver,
-                    new IntentFilter(SeriesDownloadService.ACTION_NEWTOKI_REFRESH_REQUIRED),
-                    ContextCompat.RECEIVER_NOT_EXPORTED);
-            newtokiRefreshReceiverRegistered = true;
-        }
-        handleNewtokiRefreshRequest(
-                SeriesDownloadService.pendingNewtokiRefreshRequestId());
-    }
-
-    @Override protected void onStop() {
-        if (newtokiRefreshReceiverRegistered) {
-            unregisterReceiver(newtokiRefreshReceiver);
-            newtokiRefreshReceiverRegistered = false;
-        }
-        super.onStop();
-    }
-
-    private void handleNewtokiRefreshRequest(long requestId) {
-        if (requestId == 0L || requestId == handlingNewtokiRefreshRequestId) return;
-        if (requestId != SeriesDownloadService.pendingNewtokiRefreshRequestId()) return;
-        handlingNewtokiRefreshRequestId = requestId;
-        if (!SourceSettings.SOURCE_NEWTOKI.equals(SourceSettings.getSource(this))) {
-            SourceSettings.setSource(this, SourceSettings.SOURCE_NEWTOKI);
-            recreateBrowseChannel();
-            naverButton.setText(SourceSettings.channelLabel(this));
-        }
-        showNaver();
-        Toast.makeText(this, "뉴토끼 인증을 자동으로 갱신합니다.",
-                Toast.LENGTH_SHORT).show();
-        naverView.refreshNewtokiAuthentication(() -> {
-            if (handlingNewtokiRefreshRequestId == requestId) {
-                handlingNewtokiRefreshRequestId = 0L;
-            }
-            if (requestId != SeriesDownloadService.pendingNewtokiRefreshRequestId()) return;
-            SeriesDownloadService.completeNewtokiRefresh(requestId);
-            Toast.makeText(this, "뉴토끼 인증 갱신 완료 · 다운로드를 이어받습니다.",
-                    Toast.LENGTH_SHORT).show();
-            showDownloads();
-        });
     }
 
     @Override protected void onDestroy() {

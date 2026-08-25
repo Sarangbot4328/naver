@@ -14,11 +14,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.net.HttpURLConnection;
-import java.net.ConnectException;
-import java.net.NoRouteToHostException;
-import java.net.SocketException;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -72,30 +67,6 @@ public final class NewtokiApi {
     }
 
     private NewtokiApi() { }
-
-    public static boolean isTemporaryAccessFailure(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof SocketTimeoutException ||
-                    current instanceof ConnectException ||
-                    current instanceof NoRouteToHostException ||
-                    current instanceof UnknownHostException ||
-                    current instanceof SocketException) {
-                return true;
-            }
-            String message = current.getMessage();
-            if (message != null) {
-                if (message.contains("뉴토끼 접속 인증이 만료되었습니다")) return true;
-                Matcher status = Pattern.compile(
-                        "뉴토끼 (?:이미지 HTTP|응답 오류) " +
-                                "(403|408|425|429|500|502|503|504|520|521|522|523|524)")
-                        .matcher(message);
-                if (status.find()) return true;
-            }
-            current = current.getCause();
-        }
-        return false;
-    }
 
     public static boolean isSeriesKey(String key) {
         return key != null && key.matches(KEY_PREFIX + "[0-9a-f]+");
@@ -230,10 +201,17 @@ public final class NewtokiApi {
         HttpURLConnection connection = open(url, referer, cookie, "image/*,*/*;q=0.8");
         try {
             int code = connection.getResponseCode();
+            if (code == 403 || code == 503) {
+                throw authenticationExpired();
+            }
             if (code < 200 || code >= 300) {
                 throw new IOException("뉴토끼 이미지 HTTP " + code);
             }
-            return readAll(connection.getInputStream(), "뉴토끼 이미지 다운로드 중단");
+            byte[] bytes = readAll(connection.getInputStream(), "뉴토끼 이미지 다운로드 중단");
+            if (!isImageBytes(bytes)) {
+                throw authenticationExpired();
+            }
+            return bytes;
         } finally {
             connection.disconnect();
         }
@@ -289,15 +267,31 @@ public final class NewtokiApi {
         try {
             int code = connection.getResponseCode();
             if (code == 403 || code == 503) {
-                throw new IOException("뉴토끼 접속 인증이 만료되었습니다. 뉴토끼 채널에서 작품 페이지를 다시 연 뒤 다운로드해 주세요.");
+                throw authenticationExpired();
             }
             if (code < 200 || code >= 300) throw new IOException("뉴토끼 응답 오류 " + code);
             String html = new String(readAll(connection.getInputStream(), "뉴토끼 요청 중단"),
                     StandardCharsets.UTF_8);
-            return Jsoup.parse(html, url);
+            Document document = Jsoup.parse(html, url);
+            if (isAuthenticationPage(document)) throw authenticationExpired();
+            return document;
         } finally {
             connection.disconnect();
         }
+    }
+
+    private static boolean isAuthenticationPage(Document document) {
+        if (document == null) return true;
+        if (!document.select("#challenge-form,.challenge-form,#challenge-stage," +
+                ".cf-challenge,.cf-turnstile").isEmpty()) return true;
+        String title = document.title().toLowerCase();
+        return title.contains("just a moment") || title.contains("잠시만 기다려") ||
+                title.contains("보안 확인");
+    }
+
+    private static IOException authenticationExpired() {
+        return new IOException("뉴토끼 접속 인증이 만료되었습니다. " +
+                "뉴토끼 채널에서 사이트를 갱신한 뒤 다운로드 탭에서 이어받기를 눌러 주세요.");
     }
 
     private static void collectEpisodes(Document document, Map<String, RawEpisode> unique) {

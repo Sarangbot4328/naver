@@ -16,6 +16,8 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public final class WebtoonStorage {
     private final Context context;
@@ -139,6 +141,18 @@ public final class WebtoonStorage {
         DocumentFile dir = externalSeriesDir(titleId, false);
         DocumentFile file = dir == null ? null : dir.findFile(name);
         return file != null && file.isFile();
+    }
+
+    public int episodeZipEntryCount(String titleId, int episode) throws IOException {
+        int count = 0;
+        try (ZipInputStream zip = new ZipInputStream(openEpisodeZip(titleId, episode))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (!entry.isDirectory()) count++;
+                zip.closeEntry();
+            }
+        }
+        return count;
     }
 
     public int cleanupIncomplete(String titleId) throws IOException {
