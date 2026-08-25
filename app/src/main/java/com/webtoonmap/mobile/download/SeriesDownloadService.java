@@ -52,6 +52,10 @@ import java.util.zip.ZipOutputStream;
 
 public final class SeriesDownloadService extends Service {
     public static final String ACTION_PROGRESS = "com.webtoonmap.mobile.DOWNLOAD_PROGRESS";
+    public static final String ACTION_NEWTOKI_REFRESH_REQUIRED =
+            "com.webtoonmap.mobile.NEWTOKI_REFRESH_REQUIRED";
+    public static final String EXTRA_NEWTOKI_REFRESH_REQUEST_ID =
+            "newtoki_refresh_request_id";
     public static final String EXTRA_TITLE_ID = "title_id";
     public static final String EXTRA_MESSAGE = "message";
     public static final String EXTRA_DONE = "done";
@@ -61,6 +65,10 @@ public final class SeriesDownloadService extends Service {
     private static final String CHANNEL_ID = "webtoon_downloads";
     private static final int NOTIFICATION_ID = 2001;
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
+    private static final Object NEWTOKI_REFRESH_LOCK = new Object();
+    private static long newtokiRefreshRequestId;
+    private static long newtokiRefreshCompletedRequestId;
+    private static boolean newtokiRefreshPending;
     private static volatile String currentTitleId;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService progressWatchdog =
@@ -74,6 +82,20 @@ public final class SeriesDownloadService extends Service {
     private volatile long lastProgressAtMs;
 
     public static boolean isRunning() { return RUNNING.get(); }
+    public static long pendingNewtokiRefreshRequestId() {
+        synchronized (NEWTOKI_REFRESH_LOCK) {
+            return newtokiRefreshPending ? newtokiRefreshRequestId : 0L;
+        }
+    }
+
+    public static void completeNewtokiRefresh(long requestId) {
+        synchronized (NEWTOKI_REFRESH_LOCK) {
+            if (!newtokiRefreshPending || requestId != newtokiRefreshRequestId) return;
+            newtokiRefreshCompletedRequestId = requestId;
+            newtokiRefreshPending = false;
+            NEWTOKI_REFRESH_LOCK.notifyAll();
+        }
+    }
     public static boolean isDownloading(String titleId) {
         return RUNNING.get() && titleId != null && titleId.equals(currentTitleId);
     }
@@ -407,6 +429,10 @@ public final class SeriesDownloadService extends Service {
         default long retryDelayMs(int failedAttempt) {
             return 0L;
         }
+
+        default long retryCycleDelayMs(Exception error) {
+            return 0L;
+        }
     }
 
     private static final class ExternalEpisode {
@@ -580,6 +606,7 @@ public final class SeriesDownloadService extends Service {
                     @Override public long retryDelayMs(int failedAttempt) {
                         return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
                     }
+
                 });
     }
 
@@ -685,6 +712,10 @@ public final class SeriesDownloadService extends Service {
                     @Override public long retryDelayMs(int failedAttempt) {
                         return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
                     }
+
+                    @Override public long retryCycleDelayMs(Exception error) {
+                        return NewtokiApi.isTemporaryAccessFailure(error) ? 60_000L : 0L;
+                    }
                 });
     }
     private void downloadHitomi(String titleId) throws Exception {
@@ -755,9 +786,47 @@ public final class SeriesDownloadService extends Service {
 
             String label = current + "/" + episodes.size() + "화 · " + episode.title;
             int maxAttempts = Math.max(1, api.maxEpisodeAttempts());
-            int saved = downloadExternalEpisodeWithRetry(
-                    titleId, episode, label, current, episodes.size(),
-                    storage, api, maxAttempts);
+            int saved;
+            int retryStage = 0;
+            while (true) {
+                try {
+                    saved = downloadExternalEpisodeWithRetry(
+                            titleId, episode, label, current, episodes.size(),
+                            storage, api, maxAttempts);
+                    break;
+                } catch (Exception error) {
+                    long cycleDelayMs = Math.max(0L, api.retryCycleDelayMs(error));
+                    if (cycleDelayMs == 0L) throw error;
+                    retryStage++;
+                    if (retryStage == 1) {
+                        long waitSeconds = Math.max(1L, cycleDelayMs / 1_000L);
+                        update(label + " · " + maxAttempts + "회 실패 · " +
+                                        waitSeconds + "초 후 자동 이어받기",
+                                current - 1, episodes.size());
+                        waitForRetryDelay(cycleDelayMs);
+                        update(label + " · 두 번째 자동 이어받기 시작",
+                                current - 1, episodes.size());
+                        continue;
+                    }
+
+                    if (retryStage == 2) {
+                        boolean refreshed = requestNewtokiWebViewRefresh(
+                                label, current - 1, episodes.size());
+                        if (!refreshed) {
+                            throw new java.io.IOException(
+                                    "뉴토끼 탭 자동 갱신을 완료하지 못했습니다. " +
+                                            "나중에 이어받기를 눌러 주세요.", error);
+                        }
+                        update(label + " · 인증 갱신 완료 · 마지막 자동 이어받기 시작",
+                                current - 1, episodes.size());
+                        continue;
+                    }
+
+                    throw new java.io.IOException(
+                            "뉴토끼 자동 갱신 후에도 실패했습니다. " +
+                                    "나중에 이어받기를 눌러 주세요.", error);
+                }
+            }
             /* Replaced by downloadExternalEpisodeWithRetry.
                 try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(tempZip))) {
                     for (int i = 0; i < images.size(); i++) {
@@ -938,6 +1007,49 @@ public final class SeriesDownloadService extends Service {
         }
     }
 
+    private boolean requestNewtokiWebViewRefresh(String label, int current, int total)
+            throws InterruptedException {
+        final long requestId;
+        synchronized (NEWTOKI_REFRESH_LOCK) {
+            requestId = ++newtokiRefreshRequestId;
+            newtokiRefreshPending = true;
+        }
+
+        update(label + " · 두 번째 4회 실패 · 뉴토끼 탭 자동 갱신 중",
+                current, total);
+        Intent refresh = new Intent(ACTION_NEWTOKI_REFRESH_REQUIRED)
+                .setPackage(getPackageName())
+                .putExtra(EXTRA_NEWTOKI_REFRESH_REQUEST_ID, requestId);
+        sendBroadcast(refresh);
+
+        long deadline = SystemClock.elapsedRealtime() + 60_000L;
+        synchronized (NEWTOKI_REFRESH_LOCK) {
+            while (newtokiRefreshPending && newtokiRefreshRequestId == requestId) {
+                checkCancelled();
+                markProgress();
+                long remaining = deadline - SystemClock.elapsedRealtime();
+                if (remaining <= 0L) break;
+                NEWTOKI_REFRESH_LOCK.wait(Math.min(1_000L, remaining));
+            }
+            boolean completed = newtokiRefreshCompletedRequestId == requestId;
+            if (newtokiRefreshPending && newtokiRefreshRequestId == requestId) {
+                newtokiRefreshPending = false;
+            }
+            return completed;
+        }
+    }
+
+    private void waitForRetryDelay(long delayMs) throws InterruptedException {
+        long deadline = SystemClock.elapsedRealtime() + Math.max(0L, delayMs);
+        while (true) {
+            checkCancelled();
+            markProgress();
+            long remaining = deadline - SystemClock.elapsedRealtime();
+            if (remaining <= 0L) return;
+            Thread.sleep(Math.min(1_000L, remaining));
+        }
+    }
+
     private void cleanupIncomplete(String titleId) {
         Thread.interrupted();
         try {
@@ -1054,6 +1166,10 @@ public final class SeriesDownloadService extends Service {
         NetworkRetry.cancel(thread);
         RUNNING.set(false);
         currentTitleId = null;
+        synchronized (NEWTOKI_REFRESH_LOCK) {
+            newtokiRefreshPending = false;
+            NEWTOKI_REFRESH_LOCK.notifyAll();
+        }
         releaseWakeLock();
         progressWatchdog.shutdownNow();
         executor.shutdownNow();
@@ -1064,11 +1180,5 @@ public final class SeriesDownloadService extends Service {
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
     }
 }
-
-
-
-
-
-
 
 

@@ -37,6 +37,7 @@ import java.util.zip.ZipInputStream;
 public final class OfflineViewerActivity extends AppCompatActivity {
     private static final String STATE_EPISODE_INDEX = "viewer_episode_index";
     private static final String STATE_PAGE_INDEX = "viewer_page_index";
+    private static final String STATE_SCROLL_POSITION = "viewer_scroll_position";
     private static final String STATE_AUTO_ADVANCE_PAUSED = "viewer_auto_advance_paused";
 
     private String titleId;
@@ -60,6 +61,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private float lastWebtoonTapX;
     private float lastWebtoonTapY;
     private volatile int currentPage;
+    private volatile int currentScrollPosition;
+    private boolean hasLoadedEpisode;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler autoAdvanceHandler = new Handler(Looper.getMainLooper());
     private final Runnable autoAdvanceTask = this::performAutoAdvance;
@@ -78,10 +81,15 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         episodes = LibraryDatabase.get(this).listEpisodes(titleId);
         episodeIndex = 0;
         for (int i = 0; i < episodes.size(); i++) if (episodes.get(i).number == episodeNo) episodeIndex = i;
+        Integer restoredScrollPosition = null;
         if (state != null && !episodes.isEmpty()) {
             episodeIndex = Math.max(0, Math.min(
                     state.getInt(STATE_EPISODE_INDEX, episodeIndex), episodes.size() - 1));
             currentPage = Math.max(0, state.getInt(STATE_PAGE_INDEX, 0));
+            if (state.containsKey(STATE_SCROLL_POSITION)) {
+                restoredScrollPosition = Math.max(
+                        0, state.getInt(STATE_SCROLL_POSITION, 0));
+            }
             autoAdvancePaused = state.getBoolean(STATE_AUTO_ADVANCE_PAUSED, false);
         }
 
@@ -104,29 +112,42 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         }
 
         WebSettings settings = webView.getSettings();
-        // 페이지 제어 스크립트는 앱이 생성한 로컬 만화책 HTML에서만 실행됩니다.
-        settings.setJavaScriptEnabled(pageMode || autoAdvanceEnabled);
+        // 페이지·스크롤 제어 스크립트는 앱이 생성한 로컬 뷰어 HTML에서만 실행됩니다.
+        settings.setJavaScriptEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
-        if (pageMode) webView.addJavascriptInterface(new ViewerBridge(), "AndroidViewer");
-        else configureWebtoonEndGesture();
-        loadEpisode(episodeIndex, currentPage);
+        webView.addJavascriptInterface(new ViewerBridge(), "AndroidViewer");
+        if (!pageMode) configureWebtoonEndGesture();
+        loadEpisode(episodeIndex, currentPage, restoredScrollPosition);
     }
 
     private void loadEpisode(int index, int initialPage) {
+        loadEpisode(index, initialPage, null);
+    }
+
+    private void loadEpisode(int index, int initialPage, Integer restoredScrollPosition) {
         if (index < 0 || index >= episodes.size()) return;
+        saveCurrentScrollPosition();
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
         episodeTransitionPending = true;
         episodeIndex = index;
         currentPage = Math.max(0, initialPage);
         EpisodeItem episode = episodes.get(index);
+        currentScrollPosition = pageMode ? 0 :
+                restoredScrollPosition != null
+                        ? Math.max(0, restoredScrollPosition)
+                        : LibraryDatabase.get(this)
+                                .getEpisodeScrollPosition(titleId, episode.number);
+        hasLoadedEpisode = true;
         SeriesItem series = LibraryDatabase.get(this).getSeries(titleId);
         titleView.setText((series == null ? "웹툰" : series.title) + " · " + episode.number + "화");
         previous.setEnabled(index > 0);
         next.setEnabled(index + 1 < episodes.size());
 
         int generation = ++loadGeneration;
+        int initialPageForLoad = currentPage;
+        int initialScrollForLoad = currentScrollPosition;
         webView.loadData("<html><body style='background:#111;color:#aaa;text-align:center;padding-top:80px'>ZIP 회차를 여는 중…</body></html>",
                 "text/html", "UTF-8");
         String storageUri = series == null ? null : series.storageUri;
@@ -138,8 +159,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 Arrays.sort(images, Comparator.comparing(File::getName));
                 boolean hasNext = index + 1 < episodes.size();
                 String html = pageMode
-                        ? buildPageHtml(images, hasNext, currentPage)
-                        : buildScrollHtml(images, hasNext);
+                        ? buildPageHtml(images, hasNext, initialPageForLoad)
+                        : buildScrollHtml(images, hasNext, initialScrollForLoad);
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
                     episodeTransitionPending = false;
@@ -148,7 +169,6 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                             .markEpisodeViewed(titleId, episode.number);
                     webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html,
                             "text/html", "UTF-8", null);
-                    if (!pageMode) webView.scrollTo(0, 0);
                     scheduleAutoAdvance();
                 });
             } catch (Exception e) {
@@ -255,12 +275,29 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         return contentHeight <= webView.getScrollY() + webView.getHeight() + tolerance;
     }
 
-    private String buildScrollHtml(File[] images, boolean hasNext) {
+    private String buildScrollHtml(File[] images, boolean hasNext, int initialScrollPosition) {
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>html,body{margin:0;background:#111}img{display:block;width:100%;height:auto}</style></head><body>");
-        for (File image : images) html.append("<img src='").append(image.getName()).append("' loading='lazy'>");
+        boolean restoring = initialScrollPosition > 0;
+        for (File image : images) {
+            html.append("<img src='").append(image.getName()).append("' loading='")
+                    .append(restoring ? "eager" : "lazy").append("'>");
+        }
         html.append("<div style='height:64px;color:#aaa;text-align:center;padding-top:30px'>")
                 .append(hasNext ? "위로 한 번 더 넘기면 다음 회차" : "마지막 회차입니다")
-                .append("</div></body></html>");
+                .append("</div><script>")
+                .append("const restoreY=").append(Math.max(0, initialScrollPosition)).append(";")
+                .append("let userMoved=false,reportTimer=null;")
+                .append("function reportScroll(){if(window.AndroidViewer&&AndroidViewer.onScrollChanged){AndroidViewer.onScrollChanged(Math.max(0,Math.round(window.scrollY)));}}")
+                .append("function queueReport(){if(reportTimer)clearTimeout(reportTimer);reportTimer=setTimeout(reportScroll,150);}")
+                .append("function restoreScroll(){if(!userMoved&&restoreY>0){window.scrollTo(0,restoreY);queueReport();}}")
+                .append("window.addEventListener('scroll',queueReport,{passive:true});")
+                .append("window.addEventListener('touchstart',function(){userMoved=true;},{passive:true});")
+                .append("window.addEventListener('touchend',reportScroll,{passive:true});")
+                .append("window.addEventListener('wheel',function(){userMoved=true;},{passive:true});")
+                .append("window.addEventListener('pagehide',reportScroll);")
+                .append("document.querySelectorAll('img').forEach(function(img){img.addEventListener('load',restoreScroll,{once:true});});")
+                .append("window.addEventListener('load',function(){restoreScroll();setTimeout(restoreScroll,250);setTimeout(restoreScroll,750);setTimeout(restoreScroll,1500);setTimeout(reportScroll,1700);});")
+                .append("</script></body></html>");
         return html.toString();
     }
 
@@ -314,6 +351,11 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
+        public void onScrollChanged(int position) {
+            currentScrollPosition = Math.max(0, position);
+        }
+
+        @JavascriptInterface
         public void onNextEpisodeRequested() {
             runOnUiThread(() -> {
                 if (!isFinishing()) requestNextEpisode();
@@ -337,12 +379,14 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     @Override protected void onPause() {
         viewerResumed = false;
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
+        saveCurrentScrollPosition();
         super.onPause();
     }
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         outState.putInt(STATE_EPISODE_INDEX, episodeIndex);
         outState.putInt(STATE_PAGE_INDEX, currentPage);
+        outState.putInt(STATE_SCROLL_POSITION, currentScrollPosition);
         outState.putBoolean(STATE_AUTO_ADVANCE_PAUSED, autoAdvancePaused);
         super.onSaveInstanceState(outState);
     }
@@ -378,7 +422,15 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
+    private void saveCurrentScrollPosition() {
+        if (pageMode || !hasLoadedEpisode || episodes == null ||
+                episodeIndex < 0 || episodeIndex >= episodes.size()) return;
+        LibraryDatabase.get(this).setEpisodeScrollPosition(
+                titleId, episodes.get(episodeIndex).number, currentScrollPosition);
+    }
+
     @Override protected void onDestroy() {
+        saveCurrentScrollPosition();
         loadGeneration++;
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
         executor.shutdownNow();

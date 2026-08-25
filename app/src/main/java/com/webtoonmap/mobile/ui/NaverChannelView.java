@@ -65,6 +65,9 @@ public final class NaverChannelView extends FrameLayout {
     private boolean stopping;
     private boolean connectionErrorDialogShowing;
     private boolean newtokiSeriesPage;
+    private Runnable newtokiAuthenticationRefreshCallback;
+    private long newtokiAuthenticationRefreshDeadline;
+    private boolean newtokiAuthenticationRefreshLoadStarted;
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             if (intent.getBooleanExtra(SeriesDownloadService.EXTRA_DONE, false)) stopping = false;
@@ -190,7 +193,12 @@ public final class NaverChannelView extends FrameLayout {
 
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                if (SourceSettings.SOURCE_NEWTOKI.equals(source)) newtokiSeriesPage = false;
+                if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+                    newtokiSeriesPage = false;
+                    if (newtokiAuthenticationRefreshCallback != null) {
+                        newtokiAuthenticationRefreshLoadStarted = true;
+                    }
+                }
                 updateActionButtons();
             }
 
@@ -201,7 +209,10 @@ public final class NaverChannelView extends FrameLayout {
                     clearHistoryOnNextPage = false;
                 }
                 updateActionButtons();
-                if (SourceSettings.SOURCE_NEWTOKI.equals(source)) detectNewtokiSeriesPage(view, url);
+                if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+                    detectNewtokiSeriesPage(view, url);
+                    checkNewtokiAuthenticationRefresh();
+                }
                 if (SourceSettings.SOURCE_TOONKOR.equals(source) ||
                         SourceSettings.SOURCE_FUNBE.equals(source)) collectToonkorMetadata(view);
             }
@@ -675,6 +686,43 @@ public final class NaverChannelView extends FrameLayout {
         webView.stopLoading();
         webView.loadUrl(homeUrl);
     }
+    public void refreshNewtokiAuthentication(Runnable callback) {
+        if (!SourceSettings.SOURCE_NEWTOKI.equals(source)) return;
+        newtokiAuthenticationRefreshCallback = callback;
+        newtokiAuthenticationRefreshDeadline = android.os.SystemClock.elapsedRealtime() + 60_000L;
+        newtokiAuthenticationRefreshLoadStarted = false;
+        goHome();
+    }
+
+    private void checkNewtokiAuthenticationRefresh() {
+        Runnable callback = newtokiAuthenticationRefreshCallback;
+        if (callback == null || !newtokiAuthenticationRefreshLoadStarted) return;
+        if (android.os.SystemClock.elapsedRealtime() >= newtokiAuthenticationRefreshDeadline) {
+            newtokiAuthenticationRefreshCallback = null;
+            newtokiAuthenticationRefreshLoadStarted = false;
+            return;
+        }
+        String script = "(function(){var t=((document.title||'')+' '+" +
+                "(document.body?document.body.innerText:'' )).toLowerCase();" +
+                "var c=!!document.querySelector('#challenge-form,.challenge-form," +
+                "#challenge-stage,.cf-challenge,.cf-turnstile');" +
+                "return !c&&!(t.indexOf('just a moment')>=0||" +
+                "t.indexOf('performing security verification')>=0||" +
+                "t.indexOf('잠시만 기다리십시오')>=0||" +
+                "t.indexOf('잠시만 기다려')>=0||" +
+                "t.indexOf('보안 확인 수행 중')>=0);})()";
+        webView.evaluateJavascript(script, result -> {
+            if (callback != newtokiAuthenticationRefreshCallback) return;
+            if ("true".equalsIgnoreCase(result)) {
+                CookieManager.getInstance().flush();
+                newtokiAuthenticationRefreshCallback = null;
+                newtokiAuthenticationRefreshLoadStarted = false;
+                webView.postDelayed(callback, 1_000L);
+            } else {
+                webView.postDelayed(this::checkNewtokiAuthenticationRefresh, 1_000L);
+            }
+        });
+    }
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         if (!receiverRegistered) {
@@ -692,7 +740,12 @@ public final class NaverChannelView extends FrameLayout {
         }
         super.onDetachedFromWindow();
     }
-    public void destroyWebView() { webView.stopLoading(); webView.destroy(); }
+    public void destroyWebView() {
+        newtokiAuthenticationRefreshCallback = null;
+        newtokiAuthenticationRefreshLoadStarted = false;
+        webView.stopLoading();
+        webView.destroy();
+    }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 }
 

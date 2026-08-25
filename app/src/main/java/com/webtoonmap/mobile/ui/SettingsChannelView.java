@@ -37,7 +37,8 @@ public final class SettingsChannelView extends FrameLayout {
             SourceSettings.SOURCE_BLACKTOON,
             SourceSettings.SOURCE_WOLFDOT,
             SourceSettings.SOURCE_TOONKOR,
-            SourceSettings.SOURCE_FUNBE
+            SourceSettings.SOURCE_FUNBE,
+            SourceSettings.SOURCE_NEWTOKI
     };
     private final MainActivity activity;
     private final TextView version;
@@ -416,11 +417,18 @@ public final class SettingsChannelView extends FrameLayout {
         updatingSiteAddresses = true;
         siteAddressUpdateButton.setEnabled(false);
         siteAddressUpdateButton.setText("주소 확인 중…");
-        siteAddressUpdateStatus.setText("메이저링크에서 최신 주소를 확인하는 중…");
+        siteAddressUpdateStatus.setText(
+                "메이저링크 최신 주소와 뉴토끼 접속 여부를 확인하는 중…");
 
         addressUpdateExecutor.execute(() -> {
             try {
-                Map<String, String> addresses = SiteAddressUpdater.fetch();
+                Map<String, String> addresses =
+                        new java.util.LinkedHashMap<>(SiteAddressUpdater.fetch());
+                String newtokiAddress = SiteAddressUpdater.findReachableNewtokiUrl(
+                        SourceSettings.getNewtokiUrl(activity), 5);
+                if (newtokiAddress != null) {
+                    addresses.put(SourceSettings.SOURCE_NEWTOKI, newtokiAddress);
+                }
                 List<String> changed = new ArrayList<>();
                 List<String> unchanged = new ArrayList<>();
                 List<String> missing = new ArrayList<>();
@@ -432,8 +440,13 @@ public final class SettingsChannelView extends FrameLayout {
                     String newUrl = addresses.get(source);
                     if (newUrl == null) {
                         missing.add(name);
-                        details.append("• ").append(name)
-                                .append(": 찾지 못함 · 기존 주소 유지\n");
+                        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+                            details.append("• 뉴토끼: 현재 주소부터 +5까지 접속 실패")
+                                    .append(" · 기존 주소 유지\n");
+                        } else {
+                            details.append("• ").append(name)
+                                    .append(": 찾지 못함 · 기존 주소 유지\n");
+                        }
                     } else if (newUrl.equals(oldUrl)) {
                         unchanged.add(name);
                         details.append("• ").append(name)
@@ -477,7 +490,7 @@ public final class SettingsChannelView extends FrameLayout {
 
         String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 최신 " +
                 unchanged.size() + "개";
-        if (!missing.isEmpty()) summary += " · 기존 유지 " + missing.size() + "개";
+        if (!missing.isEmpty()) summary += " · 실패 " + missing.size() + "개";
         siteAddressUpdateStatus.setText(summary);
         new AlertDialog.Builder(activity)
                 .setTitle("사이트 주소 갱신 완료")
@@ -515,6 +528,9 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_FUNBE.equals(source)) {
             return SourceSettings.getFunbeUrl(activity);
         }
+        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+            return SourceSettings.getNewtokiUrl(activity);
+        }
         return "";
     }
 
@@ -524,6 +540,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_WOLFDOT.equals(source)) return "늑대닷컴";
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return "툰코";
         if (SourceSettings.SOURCE_FUNBE.equals(source)) return "펀비";
+        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return "뉴토끼";
         return source;
     }
     private void saveIliltoonUrl() {

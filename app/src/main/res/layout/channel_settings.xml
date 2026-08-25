@@ -187,7 +187,7 @@
                 android:textAllCaps="false" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="갱신 대상: 일일툰 · 블랙툰 · 늑대닷컴 · 툰코 · 펀비\n메이저링크의 무료웹툰 목록에서 최신 주소를 확인합니다. 찾지 못한 사이트의 기존 주소는 그대로 유지합니다."
+                android:text="갱신 대상: 일일툰 · 블랙툰 · 늑대닷컴 · 툰코 · 펀비 · 뉴토끼\n메이저링크의 무료웹툰 목록에서 최신 주소를 확인합니다. 뉴토끼는 현재 주소부터 번호를 1씩 올려 최대 5번 추가 확인합니다. 찾지 못한 사이트의 기존 주소는 그대로 유지합니다."
                 android:textColor="@color/text_secondary" android:textSize="13sp" />
             <TextView android:id="@+id/site_address_update_status"
                 android:layout_width="match_parent" android:layout_height="wrap_content"

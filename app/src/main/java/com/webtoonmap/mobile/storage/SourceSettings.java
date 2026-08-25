@@ -307,6 +307,7 @@ public final class SourceSettings {
         if (SOURCE_WOLFDOT.equals(source)) return KEY_WOLFDOT_URL;
         if (SOURCE_TOONKOR.equals(source)) return KEY_TOONKOR_URL;
         if (SOURCE_FUNBE.equals(source)) return KEY_FUNBE_URL;
+        if (SOURCE_NEWTOKI.equals(source)) return KEY_NEWTOKI_URL;
         return null;
     }
     private static boolean setUrl(Context context, String key, String raw) {

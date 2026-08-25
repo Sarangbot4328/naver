@@ -14,6 +14,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.net.HttpURLConnection;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -67,6 +72,30 @@ public final class NewtokiApi {
     }
 
     private NewtokiApi() { }
+
+    public static boolean isTemporaryAccessFailure(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof SocketTimeoutException ||
+                    current instanceof ConnectException ||
+                    current instanceof NoRouteToHostException ||
+                    current instanceof UnknownHostException ||
+                    current instanceof SocketException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null) {
+                if (message.contains("뉴토끼 접속 인증이 만료되었습니다")) return true;
+                Matcher status = Pattern.compile(
+                        "뉴토끼 (?:이미지 HTTP|응답 오류) " +
+                                "(403|408|425|429|500|502|503|504|520|521|522|523|524)")
+                        .matcher(message);
+                if (status.find()) return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
 
     public static boolean isSeriesKey(String key) {
         return key != null && key.matches(KEY_PREFIX + "[0-9a-f]+");
