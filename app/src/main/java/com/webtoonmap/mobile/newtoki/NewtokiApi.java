@@ -299,7 +299,8 @@ public final class NewtokiApi {
         Throwable current = error;
         while (current != null) {
             String message = current.getMessage();
-            if (message != null && message.contains("뉴토끼 이미지 HTTP 503")) return true;
+            if (message != null && message.matches(
+                    ".*뉴토끼 이미지 HTTP (?:404|503).*")) return true;
             current = current.getCause();
         }
         return false;

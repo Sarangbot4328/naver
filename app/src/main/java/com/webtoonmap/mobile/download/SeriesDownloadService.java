@@ -937,13 +937,13 @@ public final class SeriesDownloadService extends Service {
                             if (failureCount >= 3) {
                                 skipped++;
                                 update(label + " · " + (i + 1) + "/" + images.size() +
-                                                "장 · HTTP 503 3회 실패로 제외",
+                                                "장 · HTTP 404/503 3회 실패로 제외",
                                         current - 1, total);
                                 continue;
                             }
                             if (failureCount > 0) {
                                 throw new java.io.IOException(
-                                        episode.number + "화 " + (i + 1) + "번째 이미지 HTTP 503 " +
+                                        episode.number + "화 " + (i + 1) + "번째 이미지 HTTP 404/503 " +
                                                 "(" + failureCount + "/3회 실패)", imageError);
                             }
                             throw imageError;
