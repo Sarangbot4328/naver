@@ -224,9 +224,9 @@
                 <RadioButton android:id="@+id/view_mode_scroll" android:layout_width="match_parent"
                     android:layout_height="48dp" android:text="웹툰 방식 (아래로 스크롤)" />
                 <RadioButton android:id="@+id/view_mode_page_fit" android:layout_width="match_parent"
-                    android:layout_height="48dp" android:text="만화책 모드 1 (한 페이지 전체 보기 · 이전 방식)" />
+                    android:layout_height="48dp" android:text="만화책 모드 1 (양면 오른쪽 → 왼쪽)" />
                 <RadioButton android:id="@+id/view_mode_page" android:layout_width="match_parent"
-                    android:layout_height="48dp" android:text="만화책 모드 2 (가로 폭 채우기 · 현재 방식)" />
+                    android:layout_height="48dp" android:text="만화책 모드 2 (양면 왼쪽 → 오른쪽)" />
             </RadioGroup>
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"

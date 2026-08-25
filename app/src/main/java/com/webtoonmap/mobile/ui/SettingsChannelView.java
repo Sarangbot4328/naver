@@ -147,9 +147,9 @@ public final class SettingsChannelView extends FrameLayout {
                     ? SourceSettings.VIEW_MODE_PAGE_FIT : SourceSettings.VIEW_MODE_SCROLL;
             SourceSettings.setViewMode(activity, mode);
             String message = checkedId == R.id.view_mode_page
-                    ? "만화책 모드 2(가로 폭 채우기)로 변경했습니다."
+                    ? "만화책 모드 2(양면 왼쪽 → 오른쪽)로 변경했습니다."
                     : checkedId == R.id.view_mode_page_fit
-                    ? "만화책 모드 1(한 페이지 전체 보기)로 변경했습니다."
+                    ? "만화책 모드 1(양면 오른쪽 → 왼쪽)로 변경했습니다."
                     : "웹툰 방식(아래로 스크롤)으로 변경했습니다.";
             Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
         });

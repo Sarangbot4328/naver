@@ -1,5 +1,6 @@
 package com.webtoonmap.mobile.ui;
 
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -48,7 +49,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private Button previous;
     private Button next;
     private boolean pageMode;
-    private boolean pageWidthMode;
+    private boolean rightToLeftPageOrder;
     private boolean episodeTransitionPending;
     private boolean autoAdvanceEnabled;
     private boolean autoAdvancePaused;
@@ -102,7 +103,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         next.setOnClickListener(v -> requestNextEpisode());
 
         pageMode = SourceSettings.isPageMode(this);
-        pageWidthMode = SourceSettings.isPageWidthMode(this);
+        rightToLeftPageOrder = SourceSettings.VIEW_MODE_PAGE_FIT.equals(
+                SourceSettings.getViewMode(this));
         if (pageMode) {
             getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
                 @Override public void handleOnBackPressed() {
@@ -302,18 +304,32 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     }
 
     private String buildPageHtml(File[] images, boolean hasNext, int initialPage) {
-        String pageStyle = pageWidthMode
-                ? ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain}"
-                + ".page img{width:100vw;height:auto;max-width:none;display:block;-webkit-user-drag:none;user-select:none}"
-                : ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}"
-                + ".page img{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block;-webkit-user-drag:none;user-select:none}";
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>"
                 + "html,body{margin:0;background:#111;height:100%;overflow:hidden}"
                 + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow:visible;will-change:transform}"
-                + pageStyle
+                + ".page{flex:0 0 100vw;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}"
+                + ".page>img.single{max-width:100vw;max-height:100vh;width:auto;height:auto;display:block;-webkit-user-drag:none;user-select:none}"
+                + ".slice{position:relative;overflow:hidden;flex:none}"
+                + ".slice img{position:absolute;top:0;width:200%;height:100%;max-width:none;max-height:none;display:block;-webkit-user-drag:none;user-select:none}"
+                + ".slice.left img{left:0}.slice.right img{right:0}"
                 + "</style></head><body><div id='pager' class='pager'>");
         for (File image : images) {
-            html.append("<div class='page'><img src='").append(image.getName()).append("'></div>");
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(image.getAbsolutePath(), bounds);
+            if (bounds.outWidth > bounds.outHeight && bounds.outHeight > 0) {
+                double halfAspect = bounds.outWidth / (2.0d * bounds.outHeight);
+                if (rightToLeftPageOrder) {
+                    appendSpreadPage(html, image.getName(), "right", halfAspect);
+                    appendSpreadPage(html, image.getName(), "left", halfAspect);
+                } else {
+                    appendSpreadPage(html, image.getName(), "left", halfAspect);
+                    appendSpreadPage(html, image.getName(), "right", halfAspect);
+                }
+            } else {
+                html.append("<div class='page'><img class='single' src='")
+                        .append(image.getName()).append("'></div>");
+            }
         }
         html.append("</div><script>")
                 .append("const pager=document.getElementById('pager');")
@@ -321,6 +337,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("const autoAdvanceEnabled=").append(autoAdvanceEnabled).append(";")
                 .append("let currentPage=").append(Math.max(0, initialPage)).append(";")
                 .append("let startX=0,startY=0,tracking=false,wheelLocked=false,lastTapAt=0,tapTimer=null;")
+                .append("function sizeSlices(){document.querySelectorAll('.slice').forEach(function(slice){const ratio=parseFloat(slice.dataset.ratio)||1;const w=Math.min(window.innerWidth,window.innerHeight*ratio);slice.style.width=w+'px';slice.style.height=(w/ratio)+'px';});}")
                 .append("function maxPage(){return Math.max(0,pager.children.length-1);}")
                 .append("function isZoomed(){return window.visualViewport&&window.visualViewport.scale>1.05;}")
                 .append("function reportPage(){if(window.AndroidViewer&&AndroidViewer.onPageChanged){AndroidViewer.onPageChanged(currentPage);}}")
@@ -334,14 +351,22 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("pager.addEventListener('touchcancel',function(){tracking=false;goToPage(currentPage,true);},{passive:true});")
                 .append("window.addEventListener('wheel',function(e){if(isZoomed()||Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;e.preventDefault();if(wheelLocked)return;wheelLocked=true;turnPage(e.deltaX>0?1:-1,true);setTimeout(function(){wheelLocked=false;},350);},{passive:false});")
                 .append("window.addEventListener('keydown',function(e){if(e.key==='ArrowRight'){e.preventDefault();turnPage(1,true);}else if(e.key==='ArrowLeft'){e.preventDefault();turnPage(-1,true);}});")
-                .append("window.addEventListener('resize',function(){goToPage(currentPage,false);});")
-                .append("window.addEventListener('load',function(){goToPage(currentPage,false);});")
+                .append("window.addEventListener('resize',function(){sizeSlices();goToPage(currentPage,false);});")
+                .append("window.addEventListener('load',function(){sizeSlices();goToPage(currentPage,false);});")
                 .append("window.getCurrentPage=function(){return currentPage;};")
                 .append("window.turnPage=turnPage;")
                 .append("window.autoAdvancePage=autoAdvancePage;")
-                .append("goToPage(currentPage,false);")
+                .append("sizeSlices();goToPage(currentPage,false);")
                 .append("</script></body></html>");
         return html.toString();
+    }
+
+    private void appendSpreadPage(StringBuilder html, String imageName,
+                                  String half, double halfAspect) {
+        html.append("<div class='page'><div class='slice ").append(half)
+                .append("' data-ratio='")
+                .append(String.format(Locale.US, "%.8f", halfAspect))
+                .append("'><img src='").append(imageName).append("'></div></div>");
     }
 
     private final class ViewerBridge {
