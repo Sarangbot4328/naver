@@ -429,6 +429,10 @@ public final class SeriesDownloadService extends Service {
             return 0;
         }
 
+        default int imageFailureSkipThreshold(Exception error) {
+            return 0;
+        }
+
         default void imageDownloaded(String titleId, int episodeNumber,
                                      int imagePosition, String imageUrl) { }
 
@@ -727,9 +731,12 @@ public final class SeriesDownloadService extends Service {
                     @Override public int recordImageFailure(
                             String seriesId, int episodeNumber, int imagePosition,
                             String imageUrl, Exception error) {
-                        if (!NewtokiApi.isSkippablePageFailure(error)) return 0;
                         return incrementNewtokiPageFailure(
                                 seriesId, episodeNumber, imagePosition);
+                    }
+
+                    @Override public int imageFailureSkipThreshold(Exception error) {
+                        return NewtokiApi.pageFailureSkipThreshold(error);
                     }
 
                     @Override public void imageDownloaded(
@@ -932,19 +939,29 @@ public final class SeriesDownloadService extends Service {
                         try {
                             bytes = api.downloadBytes(imageUrl, episode.url);
                         } catch (Exception imageError) {
-                            int failureCount = api.recordImageFailure(
-                                    titleId, episode.number, i + 1, imageUrl, imageError);
-                            if (failureCount >= 3) {
+                            int skipThreshold = api.imageFailureSkipThreshold(imageError);
+                            int failureCount = skipThreshold == 1
+                                    ? 1
+                                    : skipThreshold > 1
+                                    ? api.recordImageFailure(titleId, episode.number,
+                                            i + 1, imageUrl, imageError)
+                                    : 0;
+                            if (skipThreshold > 0 && failureCount >= skipThreshold) {
                                 skipped++;
                                 update(label + " · " + (i + 1) + "/" + images.size() +
-                                                "장 · HTTP 404/503 3회 실패로 제외",
+                                                "장 · " + downloadErrorMessage(imageError) +
+                                                (skipThreshold == 1
+                                                        ? " · 즉시 제외"
+                                                        : " · " + skipThreshold + "회 실패로 제외"),
                                         current - 1, total);
                                 continue;
                             }
                             if (failureCount > 0) {
                                 throw new java.io.IOException(
-                                        episode.number + "화 " + (i + 1) + "번째 이미지 HTTP 404/503 " +
-                                                "(" + failureCount + "/3회 실패)", imageError);
+                                        episode.number + "화 " + (i + 1) + "번째 이미지 " +
+                                                downloadErrorMessage(imageError) + " (" +
+                                                failureCount + "/" + skipThreshold +
+                                                "회 실패)", imageError);
                             }
                             throw imageError;
                         }

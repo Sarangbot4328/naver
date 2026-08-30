@@ -295,15 +295,17 @@ public final class NewtokiApi {
                 "뉴토끼 채널에서 사이트를 갱신한 뒤 다운로드 탭에서 이어받기를 눌러 주세요.");
     }
 
-    public static boolean isSkippablePageFailure(Throwable error) {
+    public static int pageFailureSkipThreshold(Throwable error) {
         Throwable current = error;
         while (current != null) {
             String message = current.getMessage();
-            if (message != null && message.matches(
-                    ".*뉴토끼 이미지 HTTP (?:404|503).*")) return true;
+            if (message != null) {
+                if (message.contains("뉴토끼 이미지 HTTP 404")) return 1;
+                if (message.contains("뉴토끼 이미지 HTTP 503")) return 3;
+            }
             current = current.getCause();
         }
-        return false;
+        return 0;
     }
 
     private static void collectEpisodes(Document document, Map<String, RawEpisode> unique) {
