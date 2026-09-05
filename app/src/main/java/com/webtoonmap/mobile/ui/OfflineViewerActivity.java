@@ -64,6 +64,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private volatile int currentPage;
     private volatile int currentScrollPosition;
     private boolean hasLoadedEpisode;
+    private boolean pagePositionReported;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler autoAdvanceHandler = new Handler(Looper.getMainLooper());
     private final Runnable autoAdvanceTask = this::performAutoAdvance;
@@ -99,7 +100,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         previous = findViewById(R.id.previous);
         next = findViewById(R.id.next);
         findViewById(R.id.back).setOnClickListener(v -> finish());
-        previous.setOnClickListener(v -> loadEpisode(episodeIndex - 1, 0));
+        previous.setOnClickListener(v -> loadEpisode(episodeIndex - 1, null));
         next.setOnClickListener(v -> requestNextEpisode());
 
         pageMode = SourceSettings.isPageMode(this);
@@ -121,21 +122,23 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
         webView.addJavascriptInterface(new ViewerBridge(), "AndroidViewer");
         if (!pageMode) configureWebtoonEndGesture();
-        loadEpisode(episodeIndex, currentPage, restoredScrollPosition);
+        loadEpisode(episodeIndex, state == null ? null : currentPage, restoredScrollPosition);
     }
 
-    private void loadEpisode(int index, int initialPage) {
+    private void loadEpisode(int index, Integer initialPage) {
         loadEpisode(index, initialPage, null);
     }
 
-    private void loadEpisode(int index, int initialPage, Integer restoredScrollPosition) {
+    private void loadEpisode(int index, Integer initialPage, Integer restoredScrollPosition) {
         if (index < 0 || index >= episodes.size()) return;
-        saveCurrentScrollPosition();
+        saveCurrentReadingPosition();
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
         episodeTransitionPending = true;
         episodeIndex = index;
-        currentPage = Math.max(0, initialPage);
         EpisodeItem episode = episodes.get(index);
+        currentPage = initialPage != null ? Math.max(0, initialPage)
+                : pageMode ? LibraryDatabase.get(this).getEpisodePagePosition(titleId, episode.number) : 0;
+        pagePositionReported = false;
         currentScrollPosition = pageMode ? 0 :
                 restoredScrollPosition != null
                         ? Math.max(0, restoredScrollPosition)
@@ -161,7 +164,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 Arrays.sort(images, Comparator.comparing(File::getName));
                 boolean hasNext = index + 1 < episodes.size();
                 String html = pageMode
-                        ? buildPageHtml(images, hasNext, initialPageForLoad)
+                        ? buildPageHtml(images, hasNext, initialPageForLoad, generation)
                         : buildScrollHtml(images, hasNext, initialScrollForLoad);
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
@@ -187,7 +190,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
 
     private void requestNextEpisode() {
         if (episodeTransitionPending || episodeIndex + 1 >= episodes.size()) return;
-        loadEpisode(episodeIndex + 1, 0);
+        loadEpisode(episodeIndex + 1, null);
     }
 
     private void scheduleAutoAdvance() {
@@ -303,7 +306,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         return html.toString();
     }
 
-    private String buildPageHtml(File[] images, boolean hasNext, int initialPage) {
+    private String buildPageHtml(File[] images, boolean hasNext, int initialPage, int generation) {
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>"
                 + "html,body{margin:0;background:#111;height:100%;overflow:hidden}"
                 + ".pager{display:flex;flex-direction:row;height:100vh;width:100vw;overflow:visible;will-change:transform}"
@@ -333,6 +336,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         }
         html.append("</div><script>")
                 .append("const pager=document.getElementById('pager');")
+                .append("const generation=").append(generation).append(";")
                 .append("const hasNextEpisode=").append(hasNext).append(";")
                 .append("const autoAdvanceEnabled=").append(autoAdvanceEnabled).append(";")
                 .append("let currentPage=").append(Math.max(0, initialPage)).append(";")
@@ -340,7 +344,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("function sizeSlices(){document.querySelectorAll('.slice').forEach(function(slice){const ratio=parseFloat(slice.dataset.ratio)||1;const w=Math.min(window.innerWidth,window.innerHeight*ratio);slice.style.width=w+'px';slice.style.height=(w/ratio)+'px';});}")
                 .append("function maxPage(){return Math.max(0,pager.children.length-1);}")
                 .append("function isZoomed(){return window.visualViewport&&window.visualViewport.scale>1.05;}")
-                .append("function reportPage(){if(window.AndroidViewer&&AndroidViewer.onPageChanged){AndroidViewer.onPageChanged(currentPage);}}")
+                .append("function reportPage(){if(pager.children.length&&window.AndroidViewer&&AndroidViewer.onPageChanged){AndroidViewer.onPageChanged(currentPage,generation);}}")
                 .append("function goToPage(page,animated){currentPage=Math.max(0,Math.min(page,maxPage()));pager.style.transition=animated?'transform 180ms ease-out':'none';pager.style.transform='translate3d('+(-currentPage*window.innerWidth)+'px,0,0)';reportPage();}")
                 .append("function turnPage(direction,animated){if(direction>0&&currentPage>=maxPage()){if(hasNextEpisode&&window.AndroidViewer&&AndroidViewer.onNextEpisodeRequested){AndroidViewer.onNextEpisodeRequested();}else{goToPage(maxPage(),animated);}return;}goToPage(currentPage+direction,animated);}")
                 .append("function autoAdvancePage(){const page=pager.children[currentPage];if(page&&page.scrollTop+page.clientHeight<page.scrollHeight-2){page.scrollBy({top:Math.max(1,page.clientHeight*0.9),behavior:'smooth'});}else{turnPage(1,true);}}")
@@ -371,8 +375,16 @@ public final class OfflineViewerActivity extends AppCompatActivity {
 
     private final class ViewerBridge {
         @JavascriptInterface
-        public void onPageChanged(int page) {
-            currentPage = Math.max(0, page);
+        public void onPageChanged(int page, int generation) {
+            runOnUiThread(() -> {
+                // Ignore late reports from the previous episode's WebView document.
+                if (generation != loadGeneration || !pageMode || isDestroyed()) return;
+                int position = Math.max(0, page);
+                boolean changed = !pagePositionReported || currentPage != position;
+                currentPage = position;
+                pagePositionReported = true;
+                if (changed) saveCurrentReadingPosition();
+            });
         }
 
         @JavascriptInterface
@@ -404,7 +416,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     @Override protected void onPause() {
         viewerResumed = false;
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
-        saveCurrentScrollPosition();
+        saveCurrentReadingPosition();
         super.onPause();
     }
 
@@ -447,20 +459,25 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    private void saveCurrentScrollPosition() {
-        if (pageMode || !hasLoadedEpisode || episodes == null ||
+    private void saveCurrentReadingPosition() {
+        if (!hasLoadedEpisode || episodes == null ||
                 episodeIndex < 0 || episodeIndex >= episodes.size()) return;
-        LibraryDatabase.get(this).setEpisodeScrollPosition(
-                titleId, episodes.get(episodeIndex).number, currentScrollPosition);
+        if (pageMode) {
+            if (pagePositionReported) LibraryDatabase.get(this).setEpisodePagePosition(
+                    titleId, episodes.get(episodeIndex).number, currentPage);
+        } else {
+            LibraryDatabase.get(this).setEpisodeScrollPosition(
+                    titleId, episodes.get(episodeIndex).number, currentScrollPosition);
+        }
     }
 
     @Override protected void onDestroy() {
-        saveCurrentScrollPosition();
+        saveCurrentReadingPosition();
         loadGeneration++;
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
         executor.shutdownNow();
         WebtoonStorage.deleteRecursively(new File(getCacheDir(), "viewer"));
-        webView.destroy();
+        if (webView != null) webView.destroy();
         super.onDestroy();
     }
 }

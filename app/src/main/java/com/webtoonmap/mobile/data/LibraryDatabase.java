@@ -11,7 +11,7 @@ import java.util.List;
 
 public final class LibraryDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "webtoon_map.db";
-    private static final int DB_VERSION = 4;
+    private static final int DB_VERSION = 5;
     private static volatile LibraryDatabase instance;
 
     public static LibraryDatabase get(Context context) {
@@ -36,6 +36,7 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "title_id TEXT NOT NULL, episode_no INTEGER NOT NULL, title TEXT NOT NULL, " +
                 "image_count INTEGER NOT NULL DEFAULT 0, viewed INTEGER NOT NULL DEFAULT 0, " +
                 "scroll_position INTEGER NOT NULL DEFAULT 0, " +
+                "page_position INTEGER NOT NULL DEFAULT 0, " +
                 "PRIMARY KEY(title_id, episode_no), " +
                 "FOREIGN KEY(title_id) REFERENCES series(title_id) ON DELETE CASCADE)");
     }
@@ -51,6 +52,8 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
                 "ALTER TABLE episodes ADD COLUMN viewed INTEGER NOT NULL DEFAULT 0");
         if (oldVersion < 4) db.execSQL(
                 "ALTER TABLE episodes ADD COLUMN scroll_position INTEGER NOT NULL DEFAULT 0");
+        if (oldVersion < 5) db.execSQL(
+                "ALTER TABLE episodes ADD COLUMN page_position INTEGER NOT NULL DEFAULT 0");
     }
 
     public void upsertSeries(SeriesItem item) {
@@ -157,6 +160,21 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
     public void setEpisodeScrollPosition(String titleId, int number, int position) {
         ContentValues v = new ContentValues();
         v.put("scroll_position", Math.max(0, position));
+        getWritableDatabase().update("episodes", v, "title_id=? AND episode_no=?",
+                new String[]{titleId, String.valueOf(number)});
+    }
+
+    public int getEpisodePagePosition(String titleId, int number) {
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT page_position FROM episodes WHERE title_id=? AND episode_no=?",
+                new String[]{titleId, String.valueOf(number)})) {
+            return c.moveToFirst() ? Math.max(0, c.getInt(0)) : 0;
+        }
+    }
+
+    public void setEpisodePagePosition(String titleId, int number, int position) {
+        ContentValues v = new ContentValues();
+        v.put("page_position", Math.max(0, position));
         getWritableDatabase().update("episodes", v, "title_id=? AND episode_no=?",
                 new String[]{titleId, String.valueOf(number)});
     }

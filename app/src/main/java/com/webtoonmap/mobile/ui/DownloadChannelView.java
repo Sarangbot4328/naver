@@ -16,11 +16,15 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Button;
 import android.widget.Toast;
+import android.widget.ArrayAdapter;
+import android.widget.LinearLayout;
+import android.widget.ListView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.widget.SearchView;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -32,6 +36,7 @@ import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.data.EpisodeItem;
 import com.webtoonmap.mobile.data.LibraryDatabase;
+import com.webtoonmap.mobile.data.LibraryFilter;
 import com.webtoonmap.mobile.data.SeriesItem;
 import com.webtoonmap.mobile.download.SeriesDownloadService;
 import com.webtoonmap.mobile.download.SourceJobStore;
@@ -46,6 +51,10 @@ import com.webtoonmap.mobile.storage.WebtoonStorage;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.io.InputStream;
@@ -67,6 +76,12 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     private boolean receiverRegistered;
     private boolean exporting;
     private boolean tabletMode;
+    private final List<SeriesItem> allItems = new ArrayList<>();
+    private final Set<String> selectedTags = new LinkedHashSet<>();
+    private SearchView search;
+    private Button tagsButton;
+    private TextView resultCount;
+    private View filterSummary;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -105,6 +120,31 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         findViewById(R.id.refresh).setOnClickListener(v -> refresh());
         exportButton.setOnClickListener(v -> chooseExportMode());
         swipe.setOnRefreshListener(this::refresh);
+        search = findViewById(R.id.library_search);
+        tagsButton = findViewById(R.id.library_tags);
+        resultCount = findViewById(R.id.library_result_count);
+        filterSummary = findViewById(R.id.library_filter_summary);
+        search.setIconifiedByDefault(false);
+        search.setQueryHint("제목 · 태그 검색");
+        search.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override public boolean onQueryTextSubmit(String query) {
+                search.clearFocus();
+                return true;
+            }
+            @Override public boolean onQueryTextChange(String query) {
+                applyFilters();
+                list.scrollToPosition(0);
+                return true;
+            }
+        });
+        search.clearFocus();
+        tagsButton.setOnClickListener(v -> chooseTags());
+        findViewById(R.id.library_filter_clear).setOnClickListener(v -> {
+            selectedTags.clear();
+            search.setQuery("", false);
+            search.clearFocus();
+            applyFilters();
+        });
         refresh();
     }
 
@@ -114,12 +154,106 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         executor.execute(() -> {
             List<SeriesItem> rows = LibraryDatabase.get(getContext()).listSeries();
             post(() -> {
-                adapter.setItems(rows);
-                empty.setVisibility(rows.isEmpty() ? VISIBLE : GONE);
-                exportButton.setEnabled(!rows.isEmpty() && !exporting);
+                allItems.clear();
+                allItems.addAll(rows);
+                applyFilters();
                 swipe.setRefreshing(false);
             });
         });
+    }
+
+    private void applyFilters() {
+        List<SeriesItem> filtered = LibraryFilter.apply(allItems,
+                search.getQuery().toString(), selectedTags);
+        adapter.setItems(filtered);
+        boolean active = search.getQuery().toString().trim().length() > 0 || !selectedTags.isEmpty();
+        filterSummary.setVisibility(active ? VISIBLE : GONE);
+        String summary = filtered.size() + " / " + allItems.size() + "개 작품";
+        if (!selectedTags.isEmpty()) summary += " · #" + android.text.TextUtils.join(" #", selectedTags);
+        resultCount.setText(summary);
+        tagsButton.setText(selectedTags.isEmpty() ? "태그" : "태그 " + selectedTags.size());
+        tagsButton.setContentDescription(selectedTags.isEmpty() ? "태그 목록에서 선택" : "선택한 태그: " + android.text.TextUtils.join(", ", selectedTags));
+        empty.setVisibility(filtered.isEmpty() ? VISIBLE : GONE);
+        ((TextView) empty).setText(allItems.isEmpty()
+                ? "아직 다운로드한 작품이 없습니다\n웹툰 채널에서 작품을 선택해 주세요"
+                : "검색 결과가 없습니다\n검색어나 태그를 바꿔 보세요");
+        exportButton.setEnabled(!allItems.isEmpty() && !exporting);
+    }
+
+    private void chooseTags() {
+        search.clearFocus();
+        Map<String, Integer> counts = new TreeMap<>();
+        for (SeriesItem item : allItems) {
+            for (String tag : LibraryFilter.tags(item.tags)) counts.put(tag, counts.getOrDefault(tag, 0) + 1);
+        }
+        for (String tag : selectedTags) counts.putIfAbsent(tag, 0);
+        if (counts.isEmpty()) {
+            Toast.makeText(getContext(), "등록된 태그가 없습니다.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Set<String> pending = new LinkedHashSet<>(selectedTags);
+        List<String> visibleTags = new ArrayList<>();
+        LinearLayout body = new LinearLayout(getContext());
+        body.setOrientation(LinearLayout.VERTICAL);
+        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
+        body.setPadding(padding, 0, padding, 0);
+        SearchView tagSearch = new SearchView(getContext());
+        tagSearch.setIconifiedByDefault(false);
+        tagSearch.setQueryHint("태그 찾기");
+        body.addView(tagSearch);
+        TextView hint = new TextView(getContext());
+        hint.setText("선택한 태그를 모두 포함하는 작품을 표시합니다.");
+        hint.setTextSize(12);
+        body.addView(hint);
+        ListView options = new ListView(getContext());
+        options.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
+        ArrayAdapter<String> labels = new ArrayAdapter<>(getContext(), android.R.layout.simple_list_item_multiple_choice);
+        options.setAdapter(labels);
+        body.addView(options, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                Math.round(Math.min(320, getResources().getConfiguration().screenHeightDp * 0.4f)
+                        * getResources().getDisplayMetrics().density)));
+        Runnable update = () -> {
+            String query = LibraryFilter.normalize(tagSearch.getQuery().toString()).replaceFirst("^#", "");
+            labels.setNotifyOnChange(false);
+            labels.clear();
+            visibleTags.clear();
+            options.clearChoices();
+            for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+                if (!entry.getKey().contains(query)) continue;
+                visibleTags.add(entry.getKey());
+                labels.add(entry.getKey() + "  ·  " + entry.getValue());
+            }
+            labels.notifyDataSetChanged();
+            for (int i = 0; i < visibleTags.size(); i++) options.setItemChecked(i, pending.contains(visibleTags.get(i)));
+            hint.setText(visibleTags.isEmpty() ? "일치하는 태그가 없습니다."
+                    : "선택 " + pending.size() + "개 · 선택한 태그를 모두 포함하는 작품");
+        };
+        options.setOnItemClickListener((parent, view, position, id) -> {
+            String tag = visibleTags.get(position);
+            if (options.isItemChecked(position)) pending.add(tag); else pending.remove(tag);
+            hint.setText("선택 " + pending.size() + "개 · 선택한 태그를 모두 포함하는 작품");
+        });
+        tagSearch.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override public boolean onQueryTextSubmit(String query) { tagSearch.clearFocus(); return true; }
+            @Override public boolean onQueryTextChange(String query) { update.run(); return true; }
+        });
+        update.run();
+        AlertDialog dialog = new AlertDialog.Builder(getContext()).setTitle("태그 선택")
+                .setView(body)
+                .setPositiveButton("적용", (d, which) -> {
+                    selectedTags.clear();
+                    selectedTags.addAll(pending);
+                    applyFilters();
+                    list.scrollToPosition(0);
+                })
+                .setNegativeButton("취소", null)
+                .setNeutralButton("선택 해제", null).create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            pending.clear();
+            update.run();
+        }));
+        dialog.show();
+        tagSearch.clearFocus();
     }
 
     private void applyDownloadLayout() {
@@ -163,7 +297,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     /** mode: 0=transfer, 1=viewer, 2=server upload */
     private void chooseSeries(int mode) {
         if (exporting) return;
-        List<SeriesItem> rows = adapter.snapshot();
+        List<SeriesItem> rows = new ArrayList<>(allItems);
         if (rows.isEmpty()) {
             Toast.makeText(getContext(), "내보낼 작품이 없습니다.", Toast.LENGTH_SHORT).show();
             return;
@@ -708,8 +842,5 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         }
     }
 }
-
-
-
 
 
