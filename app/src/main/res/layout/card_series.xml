@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:layout_margin="5dp" android:orientation="vertical"
+    android:background="@drawable/series_card_background" android:clipToOutline="true"
+    android:clickable="true" android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
+    <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:minHeight="190dp">
+        <ImageView android:id="@+id/thumbnail" android:layout_width="match_parent"
+            android:layout_height="match_parent" android:scaleType="centerCrop"
+            android:contentDescription="작품 썸네일" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_gravity="bottom" android:layout_marginTop="58dp"
+            android:padding="12dp" android:paddingTop="32dp" android:orientation="vertical"
+            android:background="@drawable/series_card_scrim">
+            <TextView android:id="@+id/title" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end"
+                android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold" />
+            <TextView android:id="@+id/count" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                android:textColor="#E2E6EF" android:textSize="12sp" />
+            <TextView android:id="@+id/tags" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                android:maxLines="2" android:ellipsize="end" android:textColor="#CDD3E0" android:textSize="12sp" />
+        </LinearLayout>
+    </FrameLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:paddingHorizontal="4dp">
+        <Button android:id="@+id/resume" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:minHeight="48dp" android:minWidth="0dp"
+            android:layout_weight="1" android:background="?attr/selectableItemBackground"
+            android:paddingHorizontal="2dp" android:text="이어받기" android:textAllCaps="false"
+            android:textSize="12sp" android:textColor="#96E5AB" />
+        <Button android:id="@+id/delete" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:minHeight="48dp" android:minWidth="0dp"
+            android:layout_weight="1" android:background="?attr/selectableItemBackground"
+            android:paddingHorizontal="2dp" android:text="삭제" android:textAllCaps="false"
+            android:textSize="12sp" android:textColor="#FFAAA5" />
+    </LinearLayout>
+</LinearLayout>

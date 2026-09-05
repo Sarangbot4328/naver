@@ -60,6 +60,16 @@ public final class SourceSettings {
 
     private SourceSettings() { }
 
+    public static boolean isDownloadTabletMode(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean("download_tablet_mode", false);
+    }
+
+    public static void setDownloadTabletMode(Context context, boolean enabled) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean("download_tablet_mode", enabled).apply();
+    }
+
     public static String getViewMode(Context context) {
         String value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_VIEW_MODE, VIEW_MODE_SCROLL);

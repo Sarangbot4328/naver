@@ -10,6 +10,24 @@
             android:layout_marginTop="22dp" android:background="@color/surface"
             android:orientation="vertical" android:padding="18dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="다운로드 표시 모드" android:textColor="@color/text_primary"
+                android:textSize="17sp" android:textStyle="bold" />
+            <RadioGroup android:id="@+id/download_mode_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:orientation="vertical">
+                <RadioButton android:id="@+id/download_mode_list" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="48dp" android:text="기존 모드 · 한 줄 목록" />
+                <RadioButton android:id="@+id/download_mode_tablet" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="48dp" android:text="태블릿 모드 · 표지 카드 격자" />
+            </RadioGroup>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="7dp" android:text="태블릿 모드는 화면 너비에 맞춰 여러 열로 표시합니다. 선택은 자동 저장됩니다."
+                android:textColor="@color/text_secondary" android:textSize="13sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" android:background="@color/surface"
+            android:orientation="vertical" android:padding="18dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="웹툰 채널 선택" android:textColor="@color/text_primary"
                 android:textSize="17sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"

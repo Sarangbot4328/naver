@@ -44,6 +44,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final TextView version;
     private final RadioGroup sourceGroup;
     private final RadioGroup viewModeGroup;
+    private final RadioGroup downloadModeGroup;
     private final View ililtoonAddressBox;
     private final View blacktoonAddressBox;
     private final View wolfdotAddressBox;
@@ -94,6 +95,12 @@ public final class SettingsChannelView extends FrameLayout {
         version = findViewById(R.id.app_version);
         sourceGroup = findViewById(R.id.source_group);
         viewModeGroup = findViewById(R.id.view_mode_group);
+        downloadModeGroup = findViewById(R.id.download_mode_group);
+        downloadModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (refreshing) return;
+            SourceSettings.setDownloadTabletMode(activity, checkedId == R.id.download_mode_tablet);
+            activity.refreshDownloads();
+        });
         ililtoonAddressBox = findViewById(R.id.ililtoon_address_box);
         blacktoonAddressBox = findViewById(R.id.blacktoon_address_box);
         wolfdotAddressBox = findViewById(R.id.wolfdot_address_box);
@@ -200,6 +207,8 @@ public final class SettingsChannelView extends FrameLayout {
 
     public void refresh() {
         refreshing = true;
+        downloadModeGroup.check(SourceSettings.isDownloadTabletMode(activity)
+                ? R.id.download_mode_tablet : R.id.download_mode_list);
         String source = SourceSettings.getSource(activity);
         sourceGroup.check(checkedIdForSource(source));
         updateAddressVisibility(source);

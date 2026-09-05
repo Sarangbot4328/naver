@@ -24,6 +24,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
@@ -39,6 +40,7 @@ import com.webtoonmap.mobile.server.LanServerClient;
 import com.webtoonmap.mobile.server.LanServerConnector;
 import com.webtoonmap.mobile.server.LanServerItem;
 import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
+import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import java.io.File;
@@ -64,6 +66,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     private List<SeriesItem> pendingViewerItems;
     private boolean receiverRegistered;
     private boolean exporting;
+    private boolean tabletMode;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -95,6 +98,10 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         swipe = findViewById(R.id.swipe);
         list.setLayoutManager(new LinearLayoutManager(context));
         list.setAdapter(adapter);
+        list.addOnLayoutChangeListener((v, left, top, right, bottom,
+                oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) applyDownloadLayout();
+        });
         findViewById(R.id.refresh).setOnClickListener(v -> refresh());
         exportButton.setOnClickListener(v -> chooseExportMode());
         swipe.setOnRefreshListener(this::refresh);
@@ -102,6 +109,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     }
 
     public void refresh() {
+        applyDownloadLayout();
         swipe.setRefreshing(true);
         executor.execute(() -> {
             List<SeriesItem> rows = LibraryDatabase.get(getContext()).listSeries();
@@ -112,6 +120,27 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
                 swipe.setRefreshing(false);
             });
         });
+    }
+
+    private void applyDownloadLayout() {
+        boolean enabled = SourceSettings.isDownloadTabletMode(getContext());
+        boolean changed = tabletMode != enabled;
+        tabletMode = enabled;
+        if (enabled) {
+            float density = getResources().getDisplayMetrics().density;
+            int width = list.getWidth() - list.getPaddingLeft() - list.getPaddingRight();
+            if (width <= 0) width = getResources().getDisplayMetrics().widthPixels;
+            int columns = Math.max(2, (int) (width / density / 220));
+            if (list.getLayoutManager() instanceof GridLayoutManager) {
+                GridLayoutManager grid = (GridLayoutManager) list.getLayoutManager();
+                if (grid.getSpanCount() != columns) grid.setSpanCount(columns);
+            } else {
+                list.setLayoutManager(new GridLayoutManager(getContext(), columns));
+            }
+        } else if (list.getLayoutManager() instanceof GridLayoutManager) {
+            list.setLayoutManager(new LinearLayoutManager(getContext()));
+        }
+        if (changed) adapter.notifyDataSetChanged();
     }
 
     private void chooseExportMode() {
@@ -557,8 +586,11 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         void setItems(List<SeriesItem> rows) { items.clear(); items.addAll(rows); notifyDataSetChanged(); }
         List<SeriesItem> snapshot() { return new ArrayList<>(items); }
 
+        @Override public int getItemViewType(int position) { return tabletMode ? 1 : 0; }
+
         @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-            return new Holder(LayoutInflater.from(parent.getContext()).inflate(R.layout.row_series, parent, false));
+            return new Holder(LayoutInflater.from(parent.getContext()).inflate(
+                    type == 1 ? R.layout.card_series : R.layout.row_series, parent, false));
         }
 
         @Override public void onBindViewHolder(@NonNull Holder h, int position) {
@@ -676,7 +708,6 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
         }
     }
 }
-
 
 
 
