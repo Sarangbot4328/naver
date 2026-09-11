@@ -430,6 +430,8 @@ public final class SettingsChannelView extends FrameLayout {
 
         Map<String, String> oldUrls = new java.util.LinkedHashMap<>();
         Map<String, String> progressLines = new java.util.LinkedHashMap<>();
+        java.util.Set<String> blockedChecks = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        java.util.Set<String> majorlinkMatches = java.util.concurrent.ConcurrentHashMap.newKeySet();
         for (String source : AUTOMATIC_ADDRESS_SOURCES) {
             oldUrls.put(source, currentUrlForSource(source));
             progressLines.put(source, automaticSourceName(source) + ": 확인 대기");
@@ -438,12 +440,28 @@ public final class SettingsChannelView extends FrameLayout {
         addressUpdateExecutor.execute(() -> {
             try {
                 Map<String, String> addresses = SiteAddressUpdater.fetch(oldUrls,
-                        (source, candidate, offset) -> post(() -> {
-                            if (!updatingSiteAddresses) return;
-                            progressLines.put(source, automaticSourceName(source) + ": " +
-                                    candidate + (offset == 0 ? " · 현재 주소" : " · +" + offset + "/20"));
-                            siteAddressUpdateStatus.setText(String.join("\n", progressLines.values()));
-                        }));
+                        new SiteAddressUpdater.Progress() {
+                            @Override public void checking(String source, String candidate, int offset) {
+                                post(() -> {
+                                    if (!updatingSiteAddresses) return;
+                                    progressLines.put(source, automaticSourceName(source) + ": " +
+                                            candidate + (offset == 0 ? " · 현재 주소" : " · +" + offset + "/20"));
+                                    siteAddressUpdateStatus.setText(String.join("\n", progressLines.values()));
+                                });
+                            }
+                            @Override public void verificationBlocked(String source, String current) {
+                                blockedChecks.add(source);
+                                post(() -> {
+                                    if (!updatingSiteAddresses) return;
+                                    progressLines.put(source, automaticSourceName(source) +
+                                            ": 자동 확인 차단 · 메이저링크 주소 확인 중…");
+                                    siteAddressUpdateStatus.setText(String.join("\n", progressLines.values()));
+                                });
+                            }
+                            @Override public void fallbackFinished(String source, String address) {
+                                if (address != null) majorlinkMatches.add(source);
+                            }
+                        });
                 List<String> changed = new ArrayList<>();
                 List<String> unchanged = new ArrayList<>();
                 List<String> missing = new ArrayList<>();
@@ -459,17 +477,26 @@ public final class SettingsChannelView extends FrameLayout {
                         details.append("• ").append(name).append(": 확인 중 수동 변경한 주소 유지\n");
                         continue;
                     }
-                    if (newUrl == null) {
+                    if (blockedChecks.contains(source) && !majorlinkMatches.contains(source)) {
+                        addresses.remove(source);
+                        missing.add(name);
+                        details.append("• ").append(name)
+                                .append(": 자동 확인 차단 · 메이저링크 조회 실패 · 기존 주소 유지\n");
+                    } else if (newUrl == null) {
                         missing.add(name);
                         details.append("• ").append(name)
                                 .append(": 현재 주소부터 +20까지 확인 실패 · 기존 주소 유지\n");
                     } else if (newUrl.equals(oldUrl)) {
                         unchanged.add(name);
                         details.append("• ").append(name)
-                                .append(": 현재 주소 접속 확인 · 유지\n");
+                                .append(majorlinkMatches.contains(source)
+                                        ? ": 메이저링크와 현재 주소 일치 · 유지\n"
+                                        : ": 현재 주소 접속 확인 · 유지\n");
                     } else {
                         changed.add(name);
-                        details.append("• ").append(name).append("\n  ")
+                        details.append("• ").append(name)
+                                .append(majorlinkMatches.contains(source) ? " · 메이저링크에서 갱신" : "")
+                                .append("\n  ")
                                 .append(oldUrl).append("\n  → ").append(newUrl).append("\n");
                     }
                 }

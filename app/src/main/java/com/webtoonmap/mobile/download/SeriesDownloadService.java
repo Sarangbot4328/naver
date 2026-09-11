@@ -994,6 +994,18 @@ public final class SeriesDownloadService extends Service {
                 storage.writeEpisodeZip(titleId, episode.number, tempZip);
                 return new ExternalEpisodeResult(saved, skipped);
             } catch (Exception error) {
+                if (error instanceof ToonkorApi.NoImagesException) {
+                    // A confirmed empty episode is terminal, including in low-data restart mode.
+                    stalledRestartRequested.set(false);
+                    try {
+                        storage.deleteThumbnail(titleId);
+                        LibraryDatabase.get(this).clearThumbnail(titleId);
+                    } catch (Exception cleanupError) {
+                        throw new java.io.IOException(error.getMessage() + " · 썸네일 삭제 실패: " +
+                                downloadErrorMessage(cleanupError), cleanupError);
+                    }
+                    throw error;
+                }
                 lastError = error;
                 boolean cancelled = cancelRequested.get() ||
                         Thread.currentThread().isInterrupted() ||

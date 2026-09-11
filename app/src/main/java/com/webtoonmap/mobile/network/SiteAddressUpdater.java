@@ -1,5 +1,9 @@
 package com.webtoonmap.mobile.network;
 
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -23,10 +27,20 @@ public final class SiteAddressUpdater {
 
     public interface Progress {
         void checking(String source, String candidate, int offset);
+        default void verificationBlocked(String source, String current) { }
+        default void fallbackFinished(String source, String address) { }
+    }
+
+    static final class VerificationBlockedException extends java.io.IOException {
+        VerificationBlockedException() { super("자동 접속 확인이 차단되었습니다."); }
     }
 
     interface Probe {
         String check(String source, String candidate) throws Exception;
+    }
+
+    interface BlacktoonFallback {
+        String fetch() throws Exception;
     }
 
     private SiteAddressUpdater() { }
@@ -57,6 +71,11 @@ public final class SiteAddressUpdater {
 
     static String findReachable(String source, String current, Progress progress, Probe probe)
             throws InterruptedException {
+        return findReachable(source, current, progress, probe, SiteAddressUpdater::fetchBlacktoonAddress);
+    }
+
+    static String findReachable(String source, String current, Progress progress, Probe probe,
+                                BlacktoonFallback fallback) throws InterruptedException {
         NumberedAddress start = parse(source, current);
         if (start == null) return null;
         // Current URL plus +1 ... +20, never restarting from a bundled default.
@@ -71,12 +90,51 @@ public final class SiteAddressUpdater {
                         finalAddress.number == start.number + offset) {
                     return finalAddress.url(0);
                 }
+            } catch (VerificationBlockedException blocked) {
+                // An access refusal does not establish that the user's saved address is obsolete.
+                // Use the address listing only when the saved Blacktoon address refuses verification.
+                if (offset == 0) {
+                    if (progress != null) progress.verificationBlocked(source, current);
+                    if ("blacktoon".equals(source)) {
+                        String listed = null;
+                        try {
+                            NumberedAddress address = parse(source, fallback.fetch());
+                            if (address != null) listed = address.url(0);
+                        } catch (InterruptedException cancelled) {
+                            Thread.currentThread().interrupt();
+                            throw cancelled;
+                        } catch (Exception ignored) { }
+                        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+                        if (progress != null) progress.fallbackFinished(source, listed);
+                        if (listed != null) return listed;
+                    }
+                    return current;
+                }
             } catch (InterruptedException cancelled) {
                 Thread.currentThread().interrupt();
                 throw cancelled;
             } catch (Exception ignored) {
                 // Failure belongs to this candidate, not the other sites.
             }
+        }
+        return null;
+    }
+
+    private static String fetchBlacktoonAddress() throws Exception {
+        Document document = Jsoup.connect("https://majorlink2.com")
+                .userAgent(ConnectionCompatibility.requestUserAgent())
+                .timeout(15_000).maxBodySize(2 * 1024 * 1024).followRedirects(true).get();
+        return parseBlacktoonAddress(document);
+    }
+
+    static String parseBlacktoonAddress(Document document) {
+        for (Element anchor : document.select("a[href]")) {
+            String name = anchor.attr("title").trim();
+            if (name.isEmpty()) name = anchor.text();
+            name = name.replaceAll("\\s+", "");
+            if (!"블랙툰".equals(name) && !"blacktoon".equalsIgnoreCase(name)) continue;
+            NumberedAddress address = parse("blacktoon", anchor.absUrl("href"));
+            if (address != null) return address.url(0);
         }
         return null;
     }
@@ -95,6 +153,9 @@ public final class SiteAddressUpdater {
             NetworkRetry.track(connection);
             try {
                 int code = connection.getResponseCode();
+                if ("blacktoon".equals(source) && code == 403) {
+                    throw new VerificationBlockedException();
+                }
                 if (code >= 300 && code < 400) {
                     String location = connection.getHeaderField("Location");
                     if (location == null) return null;

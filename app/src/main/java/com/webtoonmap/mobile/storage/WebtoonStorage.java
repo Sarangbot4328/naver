@@ -30,6 +30,18 @@ public final class WebtoonStorage {
 
     public String storageUri() { return treeUri; }
 
+    public void deleteThumbnail(String titleId) throws IOException {
+        if (treeUri == null) {
+            File thumbnail = new File(defaultSeriesDir(titleId), "thumbnail.jpg");
+            if (thumbnail.exists() && !thumbnail.delete()) throw new IOException("썸네일 파일 삭제 실패");
+        } else {
+            DocumentFile dir = externalSeriesDir(titleId, false);
+            if (dir == null) return;
+            DocumentFile thumbnail = dir.findFile("thumbnail.jpg");
+            if (thumbnail != null && !thumbnail.delete()) throw new IOException("썸네일 파일 삭제 실패");
+        }
+    }
+
     public String writeThumbnail(String titleId, byte[] bytes) throws IOException {
         if (treeUri == null) {
             File dir = defaultSeriesDir(titleId);

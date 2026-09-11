@@ -30,6 +30,12 @@ public final class ToonkorApi {
     private static final int READ_TIMEOUT_MS = 30_000;
     private static final int REQUEST_ATTEMPTS = 3;
 
+    public static final class NoImagesException extends IOException {
+        public NoImagesException() {
+            super("툰코 회차에 이미지가 없습니다. 다운로드를 종료합니다.");
+        }
+    }
+
     public static final class SeriesInfo {
         public final String title, description, thumbnailUrl, tags, pageUrl;
         public final List<EpisodeMeta> episodes;
@@ -238,26 +244,12 @@ public final class ToonkorApi {
 
     private static List<String> fetchModernImages(String pageUrl, String id, String cookie) throws Exception {
         String endpoint = origin(pageUrl) + "/api/episodes/" + id;
-        // The site's viewer also polls peek=1 while an empty body is being prepared.
-        for (int attempt = 0; attempt <= 45; attempt++) {
-            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("다운로드 중단");
-            JSONObject data = getJson(endpoint + (attempt == 0 ? "" : "?peek=1"), pageUrl, cookie);
-            List<String> images = parseModernImages(pageUrl, data);
-            if (!images.isEmpty()) return images;
-            if (attempt < 45) {
-                try {
-                    Thread.sleep(700L);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw interrupted;
-                }
-            }
-        }
-        throw new IOException("툰코 서버에서 회차 이미지를 준비하지 못했습니다. 사이트에서 해당 회차를 확인한 뒤 이어받기를 눌러 주세요.");
+        return parseModernImages(pageUrl, getJson(endpoint, pageUrl, cookie));
     }
 
     static List<String> parseModernImages(String pageUrl, JSONObject data) throws Exception {
-        JSONArray body = new JSONArray(data.optString("bodyJson", "[]"));
+        // Missing/malformed data is a parsing error, not proof that an episode has no images.
+        JSONArray body = new JSONArray(data.getString("bodyJson"));
         List<String> images = new ArrayList<>();
         for (int i = 0; i < body.length(); i++) {
             JSONObject block = body.getJSONObject(i);
@@ -272,9 +264,7 @@ public final class ToonkorApi {
             }
             images.add(url);
         }
-        if (body.length() > 0 && images.isEmpty()) {
-            throw new IOException("툰코 회차에 다운로드 가능한 이미지가 없습니다.");
-        }
+        if (images.isEmpty()) throw new NoImagesException();
         return images;
     }
 

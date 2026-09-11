@@ -78,6 +78,12 @@ public final class LibraryDatabase extends SQLiteOpenHelper {
         getWritableDatabase().update("series", v, "title_id=?", new String[]{titleId});
     }
 
+    public void clearThumbnail(String titleId) {
+        ContentValues values = new ContentValues();
+        values.putNull("thumbnail_path");
+        getWritableDatabase().update("series", values, "title_id=?", new String[]{titleId});
+    }
+
     public void upsertEpisode(EpisodeItem item) {
         ContentValues v = new ContentValues();
         v.put("title_id", item.titleId);

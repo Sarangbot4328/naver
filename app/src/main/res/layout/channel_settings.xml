@@ -205,7 +205,7 @@
                 android:textAllCaps="false" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="갱신 대상: 블랙툰 · 늑대닷컴 · 툰코 · 펀비 · 뉴토끼\n현재 주소를 먼저 확인하고 실패하면 번호를 1씩 올려 다음 20개 주소까지 확인합니다. 접속 가능한 첫 주소를 저장하며, 다음 갱신은 저장된 번호부터 시작합니다. 모두 실패하면 기존 주소를 유지합니다. 사용자 확인 화면은 접속 가능으로 판단하지만 일반 차단·이전 주소 안내 페이지는 성공으로 처리하지 않습니다. 일일툰은 주소를 직접 설정해 주세요."
+                android:text="갱신 대상: 블랙툰 · 늑대닷컴 · 툰코 · 펀비 · 뉴토끼\n현재 주소를 먼저 확인하고 실패하면 번호를 1씩 올려 다음 20개 주소까지 확인합니다. 접속 가능한 첫 주소를 저장하며, 다음 갱신은 저장된 번호부터 시작합니다. 모두 실패하면 기존 주소를 유지합니다. 블랙툰의 현재 주소가 자동 확인을 차단하면 번호 탐색 대신 메이저링크에서 주소를 가져옵니다. 메이저링크에서도 찾지 못하면 기존 주소를 유지합니다. 새 후보의 일반 차단·이전 주소 안내 페이지는 성공으로 처리하지 않습니다. 일일툰은 주소를 직접 설정해 주세요."
                 android:textColor="@color/text_secondary" android:textSize="13sp" />
             <TextView android:id="@+id/site_address_update_status"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
