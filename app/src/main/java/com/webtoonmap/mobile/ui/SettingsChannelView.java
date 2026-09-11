@@ -33,7 +33,6 @@ import java.util.concurrent.Executors;
 
 public final class SettingsChannelView extends FrameLayout {
     private static final String[] AUTOMATIC_ADDRESS_SOURCES = {
-            SourceSettings.SOURCE_ILILTOON,
             SourceSettings.SOURCE_BLACKTOON,
             SourceSettings.SOURCE_WOLFDOT,
             SourceSettings.SOURCE_TOONKOR,
@@ -427,17 +426,24 @@ public final class SettingsChannelView extends FrameLayout {
         siteAddressUpdateButton.setEnabled(false);
         siteAddressUpdateButton.setText("주소 확인 중…");
         siteAddressUpdateStatus.setText(
-                "메이저링크 최신 주소와 뉴토끼 접속 여부를 확인하는 중…");
+                "현재 주소부터 번호를 하나씩 올려 +20까지 확인하는 중…");
+
+        Map<String, String> oldUrls = new java.util.LinkedHashMap<>();
+        Map<String, String> progressLines = new java.util.LinkedHashMap<>();
+        for (String source : AUTOMATIC_ADDRESS_SOURCES) {
+            oldUrls.put(source, currentUrlForSource(source));
+            progressLines.put(source, automaticSourceName(source) + ": 확인 대기");
+        }
 
         addressUpdateExecutor.execute(() -> {
             try {
-                Map<String, String> addresses =
-                        new java.util.LinkedHashMap<>(SiteAddressUpdater.fetch());
-                String newtokiAddress = SiteAddressUpdater.findReachableNewtokiUrl(
-                        SourceSettings.getNewtokiUrl(activity), 5);
-                if (newtokiAddress != null) {
-                    addresses.put(SourceSettings.SOURCE_NEWTOKI, newtokiAddress);
-                }
+                Map<String, String> addresses = SiteAddressUpdater.fetch(oldUrls,
+                        (source, candidate, offset) -> post(() -> {
+                            if (!updatingSiteAddresses) return;
+                            progressLines.put(source, automaticSourceName(source) + ": " +
+                                    candidate + (offset == 0 ? " · 현재 주소" : " · +" + offset + "/20"));
+                            siteAddressUpdateStatus.setText(String.join("\n", progressLines.values()));
+                        }));
                 List<String> changed = new ArrayList<>();
                 List<String> unchanged = new ArrayList<>();
                 List<String> missing = new ArrayList<>();
@@ -445,21 +451,22 @@ public final class SettingsChannelView extends FrameLayout {
 
                 for (String source : AUTOMATIC_ADDRESS_SOURCES) {
                     String name = automaticSourceName(source);
-                    String oldUrl = currentUrlForSource(source);
+                    String oldUrl = oldUrls.get(source);
                     String newUrl = addresses.get(source);
+                    if (!oldUrl.equals(currentUrlForSource(source))) {
+                        addresses.remove(source);
+                        unchanged.add(name);
+                        details.append("• ").append(name).append(": 확인 중 수동 변경한 주소 유지\n");
+                        continue;
+                    }
                     if (newUrl == null) {
                         missing.add(name);
-                        if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
-                            details.append("• 뉴토끼: 현재 주소부터 +5까지 접속 실패")
-                                    .append(" · 기존 주소 유지\n");
-                        } else {
-                            details.append("• ").append(name)
-                                    .append(": 찾지 못함 · 기존 주소 유지\n");
-                        }
+                        details.append("• ").append(name)
+                                .append(": 현재 주소부터 +20까지 확인 실패 · 기존 주소 유지\n");
                     } else if (newUrl.equals(oldUrl)) {
                         unchanged.add(name);
                         details.append("• ").append(name)
-                                .append(": 최신 주소 유지\n");
+                                .append(": 현재 주소 접속 확인 · 유지\n");
                     } else {
                         changed.add(name);
                         details.append("• ").append(name).append("\n  ")
@@ -467,16 +474,13 @@ public final class SettingsChannelView extends FrameLayout {
                     }
                 }
 
-                int applied = SourceSettings.applyAutomaticUrls(activity, addresses);
-                if (applied == 0) {
-                    throw new IllegalStateException("저장할 수 있는 주소가 없습니다.");
-                }
+                SourceSettings.applyAutomaticUrls(activity, addresses);
                 post(() -> finishSiteAddressUpdate(changed, unchanged, missing,
                         details.toString().trim()));
             } catch (Exception error) {
                 String detail = error.getMessage();
                 if (detail == null || detail.trim().isEmpty()) {
-                    detail = "주소 제공 사이트에 연결하지 못했습니다.";
+                    detail = "사이트 주소 확인을 완료하지 못했습니다.";
                 }
                 String message = detail;
                 post(() -> failSiteAddressUpdate(message));
@@ -497,7 +501,7 @@ public final class SettingsChannelView extends FrameLayout {
         newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
         activity.applyChannelSettings();
 
-        String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 최신 " +
+        String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 유지 " +
                 unchanged.size() + "개";
         if (!missing.isEmpty()) summary += " · 실패 " + missing.size() + "개";
         siteAddressUpdateStatus.setText(summary);

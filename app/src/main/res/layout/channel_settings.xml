@@ -68,7 +68,7 @@
                     android:textColor="@color/text_secondary" android:textSize="12sp" />
                 <EditText android:id="@+id/funbe_url" android:layout_width="match_parent"
                     android:layout_height="52dp" android:layout_marginTop="8dp"
-                    android:hint="https://funbe662.com" android:inputType="textUri"
+                    android:hint="https://funbe673.com" android:inputType="textUri"
                     android:maxLines="1" android:paddingHorizontal="12dp" />
                 <Button android:id="@+id/save_funbe_url" android:layout_width="match_parent"
                     android:layout_height="48dp" android:layout_marginTop="8dp"
@@ -138,7 +138,7 @@
                     android:textColor="@color/text_secondary" android:textSize="12sp" />
                 <EditText android:id="@+id/blacktoon_url" android:layout_width="match_parent"
                     android:layout_height="52dp" android:layout_marginTop="8dp"
-                    android:hint="https://blacktoon416.com" android:inputType="textUri"
+                    android:hint="https://blacktoon421.com" android:inputType="textUri"
                     android:maxLines="1" android:paddingHorizontal="12dp" />
                 <Button android:id="@+id/save_blacktoon_url" android:layout_width="match_parent"
                     android:layout_height="48dp" android:layout_marginTop="8dp"
@@ -186,7 +186,7 @@
                     android:textColor="@color/text_secondary" android:textSize="12sp" />
                 <EditText android:id="@+id/toonkor_url" android:layout_width="match_parent"
                     android:layout_height="52dp" android:layout_marginTop="8dp"
-                    android:hint="https://tkor137.com" android:inputType="textUri"
+                    android:hint="https://toonkor401.com" android:inputType="textUri"
                     android:maxLines="1" android:paddingHorizontal="12dp" />
                 <Button android:id="@+id/save_toonkor_url" android:layout_width="match_parent"
                     android:layout_height="48dp" android:layout_marginTop="8dp"
@@ -205,7 +205,7 @@
                 android:textAllCaps="false" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="갱신 대상: 일일툰 · 블랙툰 · 늑대닷컴 · 툰코 · 펀비 · 뉴토끼\n메이저링크의 무료웹툰 목록에서 최신 주소를 확인합니다. 뉴토끼는 현재 주소부터 번호를 1씩 올려 최대 5번 추가 확인합니다. 찾지 못한 사이트의 기존 주소는 그대로 유지합니다."
+                android:text="갱신 대상: 블랙툰 · 늑대닷컴 · 툰코 · 펀비 · 뉴토끼\n현재 주소를 먼저 확인하고 실패하면 번호를 1씩 올려 다음 20개 주소까지 확인합니다. 접속 가능한 첫 주소를 저장하며, 다음 갱신은 저장된 번호부터 시작합니다. 모두 실패하면 기존 주소를 유지합니다. 사용자 확인 화면은 접속 가능으로 판단하지만 일반 차단·이전 주소 안내 페이지는 성공으로 처리하지 않습니다. 일일툰은 주소를 직접 설정해 주세요."
                 android:textColor="@color/text_secondary" android:textSize="13sp" />
             <TextView android:id="@+id/site_address_update_status"
                 android:layout_width="match_parent" android:layout_height="wrap_content"

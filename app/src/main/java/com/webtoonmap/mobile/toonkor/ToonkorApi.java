@@ -3,8 +3,9 @@ package com.webtoonmap.mobile.toonkor;
 import android.net.Uri;
 import android.text.Html;
 import android.util.Base64;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
-import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.network.NetworkRetry;
 
 import java.io.ByteArrayOutputStream;
@@ -67,6 +68,8 @@ public final class ToonkorApi {
             String path = Uri.parse(url).getPath();
             if (path == null) return null;
             path = path.trim().replaceAll("/+$", "");
+            Matcher modern = Pattern.compile("^/(?:webtoon|manhwa|work)/([0-9]+)$").matcher(path);
+            if (modern.matches()) return "/work/" + modern.group(1);
             if (!path.matches("^/[^/]+$")) return null;
             String name = path.substring(1);
             String lower = name.toLowerCase(Locale.US);
@@ -74,7 +77,9 @@ public final class ToonkorApi {
             String[] reserved = {
                     "웹툰", "애니", "주소안내", "단행본", "망가", "포토툰",
                     "코사이트", "토토보증업체", "bbs", "skin", "viewer", "data",
-                    "img", "images", "bann"
+                    "img", "images", "bann", "webtoon", "manhwa", "work", "novel", "episode",
+                    "search", "bookmarks", "favorites", "recent", "account", "board", "notice",
+                    "ranking", "point-rank", "game", "shop", "event", "anime", "anime-end", "anime-adult"
             };
             for (String value : reserved) if (value.equalsIgnoreCase(name)) return null;
             return path;
@@ -93,6 +98,10 @@ public final class ToonkorApi {
                                              String siteName) throws Exception {
         String label = siteName == null || siteName.trim().isEmpty()
                 ? "\uD230\uCF54" : siteName.trim();
+        String path = seriesPath(pageUrl);
+        if ("툰코".equals(label) && path != null && path.matches("/work/[0-9]+")) {
+            return fetchModernSeries(pageUrl, path.substring("/work/".length()), cookie);
+        }
         String html = getText(pageUrl, origin(pageUrl) + "/", cookie, label);
         String title = stripHtml(firstGroup(html,
                 "(?is)<td\\b[^>]*class=[\\\"'][^\\\"']*bt_title[^\\\"']*[\\\"'][^>]*>(.*?)</td>"));
@@ -159,6 +168,10 @@ public final class ToonkorApi {
                                                    String siteName) throws Exception {
         String label = siteName == null || siteName.trim().isEmpty()
                 ? "\uD230\uCF54" : siteName.trim();
+        String path = Uri.parse(episodeUrl).getPath();
+        if ("툰코".equals(label) && path != null && path.matches("/episode/[0-9]+")) {
+            return fetchModernImages(episodeUrl, path.substring("/episode/".length()), cookie);
+        }
         String html = getText(episodeUrl, episodeUrl, cookie, label);
         String encoded = firstGroup(html,
                 "(?is)var\\s+toon_img\\s*=\\s*[\\\"']([A-Za-z0-9+/=\\s]+)[\\\"']\\s*;");
@@ -189,6 +202,96 @@ public final class ToonkorApi {
         }
         if (images.isEmpty()) throw new IOException(label + " \uD68C\uCC28 \uC774\uBBF8\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
         return new ArrayList<>(images);
+    }
+
+    private static SeriesInfo fetchModernSeries(String pageUrl, String id, String cookie) throws Exception {
+        JSONObject data = getJson(origin(pageUrl) + "/api/works/" + id, pageUrl, cookie);
+        return parseModernSeries(pageUrl, data);
+    }
+
+    static SeriesInfo parseModernSeries(String pageUrl, JSONObject data) throws Exception {
+        JSONObject work = data.getJSONObject("work");
+        String mediaType = work.optString("mediaType");
+        if (!"WEBTOON".equals(mediaType) && !"MANHWA".equals(mediaType)) {
+            throw new IOException("툰코 웹툰·만화 작품만 이미지 다운로드를 지원합니다.");
+        }
+        JSONArray list = data.getJSONArray("episodes");
+        TreeMap<Integer, EpisodeMeta> episodes = new TreeMap<>();
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject item = list.getJSONObject(i);
+            int number = item.optInt("number", 0);
+            String id = item.optString("id");
+            if (number <= 0 || !id.matches("[0-9]+") || episodes.containsKey(number)) {
+                throw new IOException("툰코 회차 번호가 잘못되었거나 중복되었습니다.");
+            }
+            String title = item.optString("title", number + "화");
+            episodes.put(number, new EpisodeMeta(number, title, origin(pageUrl) + "/episode/" + id));
+        }
+        if (episodes.isEmpty()) throw new IOException("툰코에 등록된 회차가 없습니다.");
+        String thumbnail = work.optString("coverUrl");
+        if (thumbnail.isEmpty()) thumbnail = work.optString("thumbUrl");
+        return new SeriesInfo(work.optString("title", "툰코 작품"),
+                work.optString("description", data.optString("description")),
+                absoluteUrl(pageUrl, thumbnail), work.optString("genres"), pageUrl,
+                new ArrayList<>(episodes.values()));
+    }
+
+    private static List<String> fetchModernImages(String pageUrl, String id, String cookie) throws Exception {
+        String endpoint = origin(pageUrl) + "/api/episodes/" + id;
+        // The site's viewer also polls peek=1 while an empty body is being prepared.
+        for (int attempt = 0; attempt <= 45; attempt++) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("다운로드 중단");
+            JSONObject data = getJson(endpoint + (attempt == 0 ? "" : "?peek=1"), pageUrl, cookie);
+            List<String> images = parseModernImages(pageUrl, data);
+            if (!images.isEmpty()) return images;
+            if (attempt < 45) {
+                try {
+                    Thread.sleep(700L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw interrupted;
+                }
+            }
+        }
+        throw new IOException("툰코 서버에서 회차 이미지를 준비하지 못했습니다. 사이트에서 해당 회차를 확인한 뒤 이어받기를 눌러 주세요.");
+    }
+
+    static List<String> parseModernImages(String pageUrl, JSONObject data) throws Exception {
+        JSONArray body = new JSONArray(data.optString("bodyJson", "[]"));
+        List<String> images = new ArrayList<>();
+        for (int i = 0; i < body.length(); i++) {
+            JSONObject block = body.getJSONObject(i);
+            String kind = block.optString("kind");
+            if ("paid".equals(kind) || "processing".equals(kind)) {
+                throw new IOException("툰코 회차를 지금 내려받을 수 없습니다. 사이트에서 이용 가능 여부를 확인해 주세요.");
+            }
+            if (!"image".equals(kind)) continue;
+            String url = absoluteUrl(pageUrl, block.optString("url"));
+            if (url == null || !url.matches("(?i)^https?://.*")) {
+                throw new IOException("툰코 회차 이미지 주소가 올바르지 않습니다.");
+            }
+            images.add(url);
+        }
+        if (body.length() > 0 && images.isEmpty()) {
+            throw new IOException("툰코 회차에 다운로드 가능한 이미지가 없습니다.");
+        }
+        return images;
+    }
+
+    private static JSONObject getJson(String url, String referer, String cookie) throws Exception {
+        String text = retry(() -> {
+            HttpURLConnection conn = open(url, referer, cookie, "application/json");
+            conn.setRequestProperty("X-Site", "toonkor");
+            try {
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) throw new IOException("툰코 데이터 요청 HTTP " + code);
+                return new String(readAll(conn.getInputStream(), "툰코 데이터 요청 중단"), StandardCharsets.UTF_8);
+            } finally {
+                NetworkRetry.release(conn);
+                conn.disconnect();
+            }
+        }, "툰코 데이터 요청");
+        return new JSONObject(text);
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie) throws Exception {

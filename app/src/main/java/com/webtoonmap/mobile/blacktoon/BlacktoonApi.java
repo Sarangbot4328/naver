@@ -95,6 +95,25 @@ public final class BlacktoonApi {
                 String.join(", ", parseTags(html)), detailUrl, episodes);
     }
 
+    public static SeriesInfo seriesInfoFromBrowser(String baseUrl, String seriesId,
+                                                   JSONObject snapshot) throws Exception {
+        if (snapshot == null || !seriesId.equals(snapshot.optString("seriesId"))) return null;
+        JSONArray list = snapshot.optJSONArray("episodes");
+        if (list == null || list.length() == 0) return null;
+        String base = trimSlash(baseUrl);
+        String title = snapshot.optString("title").trim();
+        if (title.isEmpty()) title = "블랙툰 만화";
+        String domain = absoluteUrl(base + "/", snapshot.optString("imageDomain"));
+        if (domain != null) {
+            cachedImgOrigin = origin(base);
+            cachedImgDomain = domain.endsWith("/") ? domain : domain + "/";
+        }
+        return new SeriesInfo(title, snapshot.optString("description"),
+                absoluteUrl(base + "/", snapshot.optString("thumbnail")),
+                snapshot.optString("tags"), base + "/webtoon/" + seriesId + ".html",
+                parseEpisodeList(base, list));
+    }
+
     private static List<EpisodeMeta> fetchEpisodeList(String base, String seriesId,
                                                       String referer, String cookie)
             throws Exception {
@@ -104,10 +123,13 @@ public final class BlacktoonApi {
                 .matcher(js);
         if (!matcher.find()) throw new IOException("블랙툰 회차 목록을 찾지 못했습니다.");
 
+        return parseEpisodeList(base, new JSONArray(matcher.group(1)));
+    }
+
+    private static List<EpisodeMeta> parseEpisodeList(String base, JSONArray array) throws Exception {
         List<EpisodeMeta> episodes = new ArrayList<>();
         LinkedHashSet<Integer> usedNumbers = new LinkedHashSet<>();
         int fallbackNumber = 1;
-        JSONArray array = new JSONArray(matcher.group(1));
         for (int i = 0; i < array.length(); i++) {
             JSONObject obj = array.optJSONObject(i);
             if (obj == null) continue;
@@ -165,17 +187,20 @@ public final class BlacktoonApi {
     }
 
     public static byte[] downloadBytes(String url, String referer, String cookie) throws Exception {
-        return NetworkRetry.forever(() -> {
-            HttpURLConnection conn = open(url, referer, cookie, "image/*,*/*;q=0.8");
-            try {
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) throw new IOException("블랙툰 이미지 HTTP " + code);
-                return readAll(conn.getInputStream(), "블랙툰 이미지 다운로드 중단");
-            } finally {
-                NetworkRetry.release(conn);
-                conn.disconnect();
+        HttpURLConnection conn = open(url, referer, cookie, "image/*,*/*;q=0.8");
+        try {
+            int code = conn.getResponseCode();
+            if (code == 403) throw accessDenied();
+            if (code < 200 || code >= 300) throw new IOException("블랙툰 이미지 HTTP " + code);
+            String contentType = conn.getContentType();
+            if (contentType != null && contentType.toLowerCase(java.util.Locale.ROOT).contains("text/html")) {
+                throw new IOException("블랙툰 이미지 대신 웹페이지가 응답했습니다. 사이트를 확인한 뒤 이어받기를 눌러 주세요.");
             }
-        });
+            return readAll(conn.getInputStream(), "블랙툰 이미지 다운로드 중단");
+        } finally {
+            NetworkRetry.release(conn);
+            conn.disconnect();
+        }
     }
 
     private static String imageDomain(String imgOrigin, String referer, String cookie) {
@@ -202,7 +227,7 @@ public final class BlacktoonApi {
         if (value.matches("(?i)^https?://.*")) return value;
         String domain = imgDomain == null || imgDomain.isEmpty() ? DEFAULT_IMG_DOMAIN : imgDomain;
         if (!domain.endsWith("/")) domain += "/";
-        return domain + value.replaceFirst("^/", "");
+        return absoluteUrl(domain, value);
     }
 
     private static LinkedHashSet<String> parseTags(String html) {
@@ -218,19 +243,22 @@ public final class BlacktoonApi {
     }
 
     private static String getText(String url, String referer, String cookie) throws Exception {
-        return NetworkRetry.forever(() -> {
-            HttpURLConnection conn = open(url, referer, cookie,
-                    "text/html,application/xhtml+xml,*/*;q=0.8");
-            try {
-                int code = conn.getResponseCode();
-                if (code < 200 || code >= 300) throw new IOException("블랙툰 응답 오류 " + code);
-                return new String(readAll(conn.getInputStream(), "블랙툰 요청 중단"),
-                        StandardCharsets.UTF_8);
-            } finally {
-                NetworkRetry.release(conn);
-                conn.disconnect();
-            }
-        });
+        HttpURLConnection conn = open(url, referer, cookie,
+                "text/html,application/xhtml+xml,*/*;q=0.8");
+        try {
+            int code = conn.getResponseCode();
+            if (code == 403) throw accessDenied();
+            if (code < 200 || code >= 300) throw new IOException("블랙툰 응답 오류 " + code);
+            return new String(readAll(conn.getInputStream(), "블랙툰 요청 중단"),
+                    StandardCharsets.UTF_8);
+        } finally {
+            NetworkRetry.release(conn);
+            conn.disconnect();
+        }
+    }
+
+    private static IOException accessDenied() {
+        return new IOException("블랙툰 HTTP 403 · 사이트에서 접근을 거부했습니다. 블랙툰 탭에서 접속/사용자 확인 후 이어받기를 눌러 주세요.");
     }
 
     private static String getTextOnce(String url, String referer, String cookie) throws Exception {
@@ -271,8 +299,8 @@ public final class BlacktoonApi {
     private static HttpURLConnection open(String url, String referer, String cookie, String accept)
             throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(0);
-        conn.setReadTimeout(0);
+        conn.setConnectTimeout(30_000);
+        conn.setReadTimeout(30_000);
         conn.setInstanceFollowRedirects(true);
         conn.setRequestProperty("User-Agent", com.webtoonmap.mobile.network.ConnectionCompatibility.requestUserAgent());
         conn.setRequestProperty("Accept", accept);

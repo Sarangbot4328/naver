@@ -520,6 +520,7 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void downloadBlacktoon(String titleId) throws Exception {
+        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
         SourceJobStore.Job job = SourceJobStore.get(this, titleId);
         if (job == null) {
             throw new IllegalStateException("블랙툰 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
@@ -532,7 +533,9 @@ public final class SeriesDownloadService extends Service {
         String cookie = CookieManager.getInstance().getCookie(baseUrl);
         checkCancelled();
         update("블랙툰 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
-        BlacktoonApi.SeriesInfo info = BlacktoonApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
+        BlacktoonApi.SeriesInfo info = BlacktoonApi.seriesInfoFromBrowser(baseUrl, seriesId,
+                com.webtoonmap.mobile.blacktoon.BlacktoonMetadataStore.get(this, titleId));
+        if (info == null) info = BlacktoonApi.fetchSeriesInfo(baseUrl, seriesId, cookie);
         List<ExternalEpisode> episodes = new java.util.ArrayList<>();
         for (BlacktoonApi.EpisodeMeta episode : info.episodes) {
             episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
@@ -551,6 +554,7 @@ public final class SeriesDownloadService extends Service {
     }
 
     private void downloadWolfdot(String titleId) throws Exception {
+        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
         SourceJobStore.Job job = SourceJobStore.get(this, titleId);
         if (job == null) {
             throw new IllegalStateException("늑대닷컴 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");

@@ -1,183 +1,229 @@
 package com.webtoonmap.mobile.network;
 
-import com.webtoonmap.mobile.storage.SourceSettings;
-
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-
-import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
-import java.util.Collections;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class SiteAddressUpdater {
-    public static final String SOURCE_URL = "https://majorlink2.com";
+    public static final int MAX_INCREMENTS = 20;
+    private static final int TIMEOUT_MS = 8_000;
+    private static final int MAX_HTML_BYTES = 128 * 1024;
 
-    private static final String USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
-    private static final Pattern NEWTOKI_HOST =
-            Pattern.compile("^(?:www\\.)?newto(\\d+)\\.com$", Pattern.CASE_INSENSITIVE);
-    private static final int NEWTOKI_CONNECT_TIMEOUT_MS = 12_000;
-    private static final int NEWTOKI_READ_TIMEOUT_MS = 12_000;
-    private static final Map<String, String> NAME_TO_SOURCE;
+    public interface Progress {
+        void checking(String source, String candidate, int offset);
+    }
 
-    static {
-        LinkedHashMap<String, String> names = new LinkedHashMap<>();
-        names.put("일일툰", SourceSettings.SOURCE_ILILTOON);
-        names.put("11툰", SourceSettings.SOURCE_ILILTOON);
-        names.put("블랙툰", SourceSettings.SOURCE_BLACKTOON);
-        names.put("늑대닷컴", SourceSettings.SOURCE_WOLFDOT);
-        names.put("툰코", SourceSettings.SOURCE_TOONKOR);
-        names.put("펀비", SourceSettings.SOURCE_FUNBE);
-        NAME_TO_SOURCE = Collections.unmodifiableMap(names);
+    interface Probe {
+        String check(String source, String candidate) throws Exception;
     }
 
     private SiteAddressUpdater() { }
 
-    public static Map<String, String> fetch() throws IOException {
-        Document document = Jsoup.connect(SOURCE_URL)
-                .userAgent(USER_AGENT)
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7")
-                .timeout(30_000)
-                .followRedirects(true)
-                .get();
-        return parse(document);
-    }
-
-    /**
-     * 현재 뉴토끼 번호부터 시작해 실패할 때마다 번호를 1씩 올려 검사합니다.
-     * maxIncrements가 5이면 현재 주소와 다음 주소 5개, 총 6개 후보를 확인합니다.
-     */
-    public static String findReachableNewtokiUrl(String currentUrl, int maxIncrements) {
-        String normalized = SourceSettings.normalizeUrl(currentUrl);
-        Integer currentNumber = newtokiNumber(normalized);
-        if (currentNumber == null) {
-            normalized = SourceSettings.DEFAULT_NEWTOKI_URL;
-            currentNumber = newtokiNumber(normalized);
-        }
-        if (currentNumber == null) return null;
-
-        int attempts = Math.max(0, maxIncrements);
-        for (int offset = 0; offset <= attempts; offset++) {
-            String candidate = "https://newto" + (currentNumber + offset) + ".com";
-            String reachable = probeNewtoki(candidate);
-            if (reachable != null) return reachable;
-        }
-        return null;
-    }
-
-    private static String probeNewtoki(String candidate) {
-        HttpURLConnection connection = null;
+    /** Each site scans its own numbers in order; independent sites run concurrently. */
+    public static Map<String, String> fetch(Map<String, String> currentUrls, Progress progress)
+            throws Exception {
+        ExecutorService workers = Executors.newFixedThreadPool(5);
+        Map<String, Future<String>> pending = new LinkedHashMap<>();
         try {
-            connection = (HttpURLConnection) new URL(candidate + "/").openConnection();
-            connection.setConnectTimeout(NEWTOKI_CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(NEWTOKI_READ_TIMEOUT_MS);
-            connection.setInstanceFollowRedirects(true);
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("User-Agent", USER_AGENT);
-            connection.setRequestProperty(
-                    "Accept", "text/html,application/xhtml+xml,*/*;q=0.8");
-            connection.setRequestProperty(
-                    "Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7");
-
-            int code = connection.getResponseCode();
-            String finalUrl = SourceSettings.normalizeUrl(connection.getURL().toString());
-            if (newtokiNumber(finalUrl) == null) return null;
-
-            if (code >= 200 && code < 400) return finalUrl;
-
-            // 정상 뉴토끼 주소도 Cloudflare 사용자 확인 중에는 403/503을 반환합니다.
-            // CF-Ray가 있으면 사이트가 살아 있고 보안 확인 단계에 도달한 것입니다.
-            String cfRay = connection.getHeaderField("CF-Ray");
-            String server = connection.getHeaderField("Server");
-            boolean cloudflare = (cfRay != null && !cfRay.trim().isEmpty()) ||
-                    (server != null && server.toLowerCase(Locale.ROOT).contains("cloudflare"));
-            if ((code == 403 || code == 503) && cloudflare) return finalUrl;
-        } catch (Exception ignored) {
-            return null;
+            for (Map.Entry<String, String> entry : currentUrls.entrySet()) {
+                String source = entry.getKey();
+                String current = entry.getValue();
+                pending.put(source, workers.submit(() ->
+                        findReachable(source, current, progress, SiteAddressUpdater::probe)));
+            }
+            Map<String, String> found = new LinkedHashMap<>();
+            for (Map.Entry<String, Future<String>> entry : pending.entrySet()) {
+                String url = entry.getValue().get();
+                if (url != null) found.put(entry.getKey(), url);
+            }
+            return found;
         } finally {
-            if (connection != null) connection.disconnect();
+            for (Future<String> future : pending.values()) future.cancel(true);
+            workers.shutdownNow();
+        }
+    }
+
+    static String findReachable(String source, String current, Progress progress, Probe probe)
+            throws InterruptedException {
+        NumberedAddress start = parse(source, current);
+        if (start == null) return null;
+        // Current URL plus +1 ... +20, never restarting from a bundled default.
+        for (int offset = 0; offset <= MAX_INCREMENTS; offset++) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            String candidate = start.url(offset);
+            if (progress != null) progress.checking(source, candidate, offset);
+            try {
+                String result = probe.check(source, candidate);
+                NumberedAddress finalAddress = parse(source, result);
+                if (finalAddress != null && finalAddress.prefix.equals(start.prefix) &&
+                        finalAddress.number == start.number + offset) {
+                    return finalAddress.url(0);
+                }
+            } catch (InterruptedException cancelled) {
+                Thread.currentThread().interrupt();
+                throw cancelled;
+            } catch (Exception ignored) {
+                // Failure belongs to this candidate, not the other sites.
+            }
         }
         return null;
     }
 
-    private static Integer newtokiNumber(String url) {
+    static String probe(String source, String candidate) throws Exception {
+        String target = candidate;
+        for (int redirect = 0; redirect <= 3; redirect++) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            HttpURLConnection connection = (HttpURLConnection) new URL(target).openConnection();
+            connection.setConnectTimeout(TIMEOUT_MS);
+            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestProperty("User-Agent", ConnectionCompatibility.requestUserAgent());
+            connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,*/*;q=0.8");
+            connection.setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.7");
+            NetworkRetry.track(connection);
+            try {
+                int code = connection.getResponseCode();
+                if (code >= 300 && code < 400) {
+                    String location = connection.getHeaderField("Location");
+                    if (location == null) return null;
+                    String next = resolveRedirect(target, location);
+                    NumberedAddress nextAddress = parse(source, next);
+                    NumberedAddress firstAddress = parse(source, candidate);
+                    if (nextAddress == null || firstAddress == null ||
+                            !nextAddress.prefix.equals(firstAddress.prefix) ||
+                            nextAddress.number != firstAddress.number) return null;
+                    target = next;
+                    continue;
+                }
+                if (code != 200 && code != 403 && code != 503) return null;
+                InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                String html = readHtml(stream, connection.getContentType());
+                boolean challenge = "challenge".equalsIgnoreCase(connection.getHeaderField("cf-mitigated"));
+                if (!isSitePage(source, code, html, challenge)) return null;
+                NumberedAddress address = parse(source, target);
+                return address == null ? null : address.url(0);
+            } finally {
+                NetworkRetry.release(connection);
+                connection.disconnect();
+            }
+        }
+        return null;
+    }
+
+    private static String readHtml(InputStream stream, String contentType) throws Exception {
+        if (stream == null) return "";
+        Charset charset = StandardCharsets.UTF_8;
+        if (contentType != null) {
+            Matcher matcher = Pattern.compile("(?i)charset\\s*=\\s*[\"']?([^;\\s\"']+)").matcher(contentType);
+            if (matcher.find()) {
+                try { charset = Charset.forName(matcher.group(1)); } catch (Exception ignored) { }
+            }
+        }
+        try (InputStream input = stream; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            while (output.size() < MAX_HTML_BYTES) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+                int count = input.read(buffer, 0, Math.min(buffer.length, MAX_HTML_BYTES - output.size()));
+                if (count < 0) break;
+                output.write(buffer, 0, count);
+            }
+            return new String(output.toByteArray(), charset);
+        }
+    }
+
+    static String resolveRedirect(String base, String location) throws Exception {
+        // HttpURLConnection exposes raw UTF-8 Location headers as Latin-1 on some runtimes.
+        boolean latin1 = true;
+        for (int i = 0; i < location.length(); i++) {
+            if (location.charAt(i) > 255) { latin1 = false; break; }
+        }
+        if (latin1) {
+            String decoded = new String(location.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+            if (decoded.indexOf('\uFFFD') < 0) location = decoded;
+        }
+        return new URL(new URL(base), location.replace(" ", "%20")).toURI().toASCIIString();
+    }
+
+    /** A 200 parking/old-address page and a generic Cloudflare block are not a match. */
+    static boolean isSitePage(String source, int code, String html, boolean challengeHeader) {
+        String lower = html == null ? "" : html.toLowerCase(Locale.ROOT);
+        if (code != 200 && code != 403 && code != 503) return false;
+        if (lower.contains("sorry, you have been blocked") ||
+                lower.contains("iis windows server") || lower.contains("domain is for sale")) return false;
+        if (challengeHeader || (lower.contains("challenge-platform") &&
+                (lower.contains("_cf_chl_opt") || lower.contains("cf-chl-")))) return true;
+        if (code != 200) return false;
+        switch (source) {
+            case "blacktoon":
+                return lower.contains("/data/toonlist/") ||
+                        lower.contains("toon_content_imgs") ||
+                        Pattern.compile("/webtoon/[0-9]+\\.html").matcher(lower).find();
+            case "wolfdot":
+                return Pattern.compile("/(?:list|cl)\\?toon=[0-9]+").matcher(lower).find() ||
+                        lower.contains("vimg-area");
+            case "toonkor":
+                return (lower.contains("툰코") || lower.contains("toonkor")) &&
+                        (lower.contains("/assets/index-") || lower.contains("section-item") ||
+                                lower.contains("bt_webtoon") || lower.contains("bt_title"));
+            case "funbe":
+                return (lower.contains("펀비") || lower.contains("funbe")) &&
+                        (lower.contains("bt_webtoon") || lower.contains("section-item") ||
+                                lower.contains("bt_title"));
+            case "newtoki":
+                return lower.contains("serial-list") || lower.contains("mana_img") ||
+                        Pattern.compile("bo_table=(?:webtoon|comic|manga|fafa)[a-z0-9]*").matcher(lower).find();
+            default:
+                return false;
+        }
+    }
+
+    private static final class NumberedAddress {
+        final String www, prefix;
+        final int number;
+        NumberedAddress(String www, String prefix, int number) {
+            this.www = www;
+            this.prefix = prefix;
+            this.number = number;
+        }
+        String url(int offset) { return "https://" + www + prefix + (number + offset) + ".com"; }
+    }
+
+    private static NumberedAddress parse(String source, String url) {
         if (url == null) return null;
+        String prefixes;
+        switch (source) {
+            case "blacktoon": prefixes = "blacktoon"; break;
+            case "wolfdot": prefixes = "wfwf"; break;
+            case "toonkor": prefixes = "toonkor|tkor"; break;
+            case "funbe": prefixes = "funbe"; break;
+            case "newtoki": prefixes = "newto|newtoki"; break;
+            default: return null;
+        }
         try {
-            String host = new URI(url).getHost();
-            if (host == null) return null;
-            Matcher matcher = NEWTOKI_HOST.matcher(host);
+            URI uri = new URI(url);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null ||
+                    uri.getUserInfo() != null || (uri.getPort() != -1 && uri.getPort() != 443)) return null;
+            Matcher matcher = Pattern.compile("^(www\\.)?(" + prefixes + ")([0-9]{1,6})\\.com$",
+                    Pattern.CASE_INSENSITIVE).matcher(uri.getHost());
             if (!matcher.matches()) return null;
-            int value = Integer.parseInt(matcher.group(1));
-            return value > 0 ? value : null;
+            int number = Integer.parseInt(matcher.group(3));
+            if (number <= 0) return null;
+            return new NumberedAddress(matcher.group(1) == null ? "" : "www.",
+                    matcher.group(2).toLowerCase(Locale.ROOT), number);
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    static Map<String, String> parse(Document document) throws IOException {
-        Element section = findFreeWebtoonSection(document);
-        if (section == null) {
-            throw new IOException("주소 모음에서 무료웹툰 항목을 찾지 못했습니다.");
-        }
-
-        LinkedHashMap<String, String> addresses = new LinkedHashMap<>();
-        for (Element anchor : section.select("a[href]")) {
-            String rawName = anchor.attr("title").trim();
-            if (rawName.isEmpty()) rawName = anchor.text().trim();
-            String source = NAME_TO_SOURCE.get(normalizeName(rawName));
-            if (source == null || addresses.containsKey(source)) continue;
-
-            String rawUrl = anchor.attr("abs:href");
-            if (rawUrl.isEmpty()) rawUrl = anchor.attr("href");
-            String url = SourceSettings.normalizeUrl(rawUrl);
-            if (url == null || isSourceWebsite(url)) continue;
-            addresses.put(source, url);
-        }
-
-        if (addresses.isEmpty()) {
-            throw new IOException("갱신할 웹툰 주소를 찾지 못했습니다.");
-        }
-        return Collections.unmodifiableMap(addresses);
-    }
-
-    private static Element findFreeWebtoonSection(Document document) {
-        for (Element block : document.select("article, .main_link_box, dl")) {
-            Element heading = block.selectFirst(".h2, h1, h2, h3, h4, dt");
-            if (heading != null && "무료웹툰".equals(normalizeName(heading.text())) &&
-                    !block.select("a[href]").isEmpty()) {
-                return block;
-            }
-        }
-
-        for (Element heading : document.select(".h2, h1, h2, h3, h4, p, dt")) {
-            if (!"무료웹툰".equals(normalizeName(heading.text()))) continue;
-            Element candidate = heading;
-            for (int depth = 0; depth < 6 && candidate != null; depth++) {
-                if (candidate.select("a[href][title]").size() >= 3) return candidate;
-                candidate = candidate.parent();
-            }
-        }
-        return null;
-    }
-
-    private static boolean isSourceWebsite(String url) {
-        String lower = url.toLowerCase(Locale.ROOT);
-        return lower.contains("majorlink2.com/view/") ||
-                lower.matches("https://(www\\.)?majorlink2\\.com");
-    }
-
-    private static String normalizeName(String value) {
-        if (value == null) return "";
-        return value.replaceAll("\\s+", "").trim();
     }
 }

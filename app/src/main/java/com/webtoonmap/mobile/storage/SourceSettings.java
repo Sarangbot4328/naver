@@ -22,11 +22,11 @@ public final class SourceSettings {
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
     public static final String DEFAULT_MANHWABANG_URL = "https://manhwabang.net";
     public static final String DEFAULT_ILILTOON_URL = "https://11toon148.com";
-    public static final String DEFAULT_BLACKTOON_URL = "https://blacktoon416.com";
-    public static final String DEFAULT_WOLFDOT_URL = "https://wfwf421.com";
+    public static final String DEFAULT_BLACKTOON_URL = "https://blacktoon421.com";
+    public static final String DEFAULT_WOLFDOT_URL = "https://wfwf496.com";
     public static final String DEFAULT_HITOMI_URL = "https://hitomi.la";
-    public static final String DEFAULT_TOONKOR_URL = "https://tkor137.com";
-    public static final String DEFAULT_FUNBE_URL = "https://funbe662.com";
+    public static final String DEFAULT_TOONKOR_URL = "https://toonkor401.com";
+    public static final String DEFAULT_FUNBE_URL = "https://funbe673.com";
     public static final String DEFAULT_NEWTOKI_URL = "https://newto29.com";
     private static final String LEGACY_DEFAULT_NEWTOKI_URL = "https://newto26.com";
     public static final String SITE_ADDRESSES_URL =
@@ -243,7 +243,13 @@ public final class SourceSettings {
     }
 
     public static String getFunbeUrl(Context context) {
-        return getUrl(context, KEY_FUNBE_URL, DEFAULT_FUNBE_URL);
+        String value = getUrl(context, KEY_FUNBE_URL, DEFAULT_FUNBE_URL);
+        if ("https://funbe662.com".equalsIgnoreCase(value)) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_FUNBE_URL, DEFAULT_FUNBE_URL).apply();
+            return DEFAULT_FUNBE_URL;
+        }
+        return value;
     }
 
     public static boolean setFunbeUrl(Context context, String raw) {
@@ -304,7 +310,12 @@ public final class SourceSettings {
         if (SOURCE_BLACKTOON.equals(source)) return getBlacktoonUrl(context);
         if (SOURCE_WOLFDOT.equals(source)) return getWolfdotUrl(context);
         if (SOURCE_HITOMI.equals(source)) return getHitomiUrl(context);
-        if (SOURCE_TOONKOR.equals(source)) return getToonkorUrl(context) + "/%EC%9B%B9%ED%88%B0";
+        if (SOURCE_TOONKOR.equals(source)) {
+            String base = getToonkorUrl(context);
+            String host = Uri.parse(base).getHost();
+            return host != null && host.matches("(?i)(?:www\\.)?toonkor[0-9]+\\.com")
+                    ? base + "/webtoon" : base + "/%EC%9B%B9%ED%88%B0";
+        }
         if (SOURCE_FUNBE.equals(source)) return getFunbeUrl(context) + "/%EC%9B%B9%ED%88%B0";
         if (SOURCE_NEWTOKI.equals(source)) return getNewtokiUrl(context);
         if (SOURCE_SITE_ADDRESSES.equals(source)) return SITE_ADDRESSES_URL;

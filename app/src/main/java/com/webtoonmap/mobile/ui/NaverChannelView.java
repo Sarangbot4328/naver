@@ -53,8 +53,8 @@ import java.util.regex.Pattern;
 public final class NaverChannelView extends FrameLayout {
     private final MainActivity activity;
     private final String source;
-    private final String homeUrl;
-    private final String allowedHost;
+    private String homeUrl;
+    private String allowedHost;
     private final WebView webView;
     private final ProgressBar progress;
     private final Button downloadButton;
@@ -64,6 +64,7 @@ public final class NaverChannelView extends FrameLayout {
     private boolean receiverRegistered;
     private boolean stopping;
     private boolean connectionErrorDialogShowing;
+    private boolean mainPageLoadFailed;
     private boolean newtokiSeriesPage;
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -150,6 +151,8 @@ public final class NaverChannelView extends FrameLayout {
         settings.setBuiltInZoomControls(false);
         ConnectionCompatibility.configure(activity);
         if (SourceSettings.isCompatibilityMode(activity) || SourceSettings.SOURCE_TOONKOR.equals(source) ||
+                SourceSettings.SOURCE_BLACKTOON.equals(source) ||
+                SourceSettings.SOURCE_WOLFDOT.equals(source) ||
                 SourceSettings.SOURCE_FUNBE.equals(source) ||
                 SourceSettings.SOURCE_NEWTOKI.equals(source)) {
             settings.setUserAgentString(ConnectionCompatibility.webViewUserAgent(activity));
@@ -182,6 +185,7 @@ public final class NaverChannelView extends FrameLayout {
                         (host.equalsIgnoreCase(allowedHost) || host.endsWith("." + allowedHost))) {
                     return false;
                 }
+                if (request.isForMainFrame() && isWolfdotAddressMove(uri)) return false;
                 if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) {
                     openExternalBrowser(uri.toString());
                 }
@@ -190,12 +194,22 @@ public final class NaverChannelView extends FrameLayout {
 
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
+                mainPageLoadFailed = false;
                 if (SourceSettings.SOURCE_NEWTOKI.equals(source)) newtokiSeriesPage = false;
                 updateActionButtons();
             }
 
             @Override public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                if (!mainPageLoadFailed && url != null && url.equals(view.getUrl()) &&
+                        isWolfdotAddressMove(Uri.parse(url)) &&
+                        !Uri.parse(url).getHost().equalsIgnoreCase(allowedHost)) {
+                    // Keep downloads and the home button on the address the user reached.
+                    if (SourceSettings.setWolfdotUrl(activity, url)) {
+                        homeUrl = SourceSettings.getWolfdotUrl(activity);
+                        allowedHost = Uri.parse(homeUrl).getHost();
+                    }
+                }
                 if (clearHistoryOnNextPage) {
                     view.clearHistory();
                     clearHistoryOnNextPage = false;
@@ -214,6 +228,7 @@ public final class NaverChannelView extends FrameLayout {
                                                    WebResourceError error) {
                 super.onReceivedError(view, request, error);
                 if (request != null && request.isForMainFrame()) {
+                    mainPageLoadFailed = true;
                     showConnectionError(networkErrorName(error.getErrorCode()),
                             String.valueOf(error.getDescription()),
                             request.getUrl() == null ? view.getUrl() : request.getUrl().toString());
@@ -224,6 +239,7 @@ public final class NaverChannelView extends FrameLayout {
                                                        WebResourceResponse response) {
                 super.onReceivedHttpError(view, request, response);
                 if (request != null && request.isForMainFrame()) {
+                    mainPageLoadFailed = true;
                     int status = response == null ? 0 : response.getStatusCode();
                     String reason = response == null ? "" : response.getReasonPhrase();
                     showConnectionError("HTTP " + status, reason,
@@ -236,6 +252,7 @@ public final class NaverChannelView extends FrameLayout {
                 handler.cancel();
                 String url = error == null ? view.getUrl() : error.getUrl();
                 if (isMainSiteUrl(url)) {
+                    mainPageLoadFailed = true;
                     int primary = error == null ? -1 : error.getPrimaryError();
                     showConnectionError(sslErrorName(primary),
                             "\uC548\uC804\uC744 \uC704\uD574 SSL \uC624\uB958\uB97C \uBB34\uC2DC\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.", url);
@@ -243,8 +260,18 @@ public final class NaverChannelView extends FrameLayout {
             }
         });
     }
+    private boolean isWolfdotAddressMove(Uri uri) {
+        return SourceSettings.SOURCE_WOLFDOT.equals(source) &&
+                "https".equalsIgnoreCase(uri.getScheme()) &&
+                WolfdotApi.isSiteHost(allowedHost) && WolfdotApi.isSiteHost(uri.getHost()) &&
+                (uri.getPort() == -1 || uri.getPort() == 443) && uri.getUserInfo() == null;
+    }
+
     private void showConnectionError(String code, String detail, String url) {
-        if (!SourceSettings.isCompatibilityMode(activity) || connectionErrorDialogShowing) return;
+        if (connectionErrorDialogShowing) return;
+        if (!SourceSettings.isCompatibilityMode(activity) &&
+                !SourceSettings.SOURCE_BLACKTOON.equals(source) &&
+                !SourceSettings.SOURCE_WOLFDOT.equals(source)) return;
         connectionErrorDialogShowing = true;
         String target = url == null || url.trim().isEmpty() ? homeUrl : url;
         String message = "\uC624\uB958: " + code +
@@ -302,6 +329,7 @@ public final class NaverChannelView extends FrameLayout {
     private boolean isMainSiteUrl(String url) {
         if (url == null) return false;
         try {
+            if (isWolfdotAddressMove(Uri.parse(url))) return true;
             String host = Uri.parse(url).getHost();
             if (host == null) return false;
             if (SourceSettings.SOURCE_NAVER.equals(source)) {
@@ -386,6 +414,69 @@ public final class NaverChannelView extends FrameLayout {
     }
 
     private void startDownload(String titleId, boolean queued, boolean queueMode) {
+        if (SourceSettings.SOURCE_BLACKTOON.equals(source)) {
+            captureBlacktoonAndDownload(titleId, queued, queueMode);
+            return;
+        }
+        enqueueDownload(titleId, queued, queueMode);
+    }
+
+    private void captureBlacktoonAndDownload(String titleId, boolean queued, boolean queueMode) {
+        String pageUrl = webView.getUrl();
+        String script = "(function(){try{" +
+                "var id=location.pathname.match(/^\\/webtoon\\/(\\d+)\\.html$/i);" +
+                "var list=typeof clist!=='undefined'?clist:null;" +
+                "if(!id||!Array.isArray(list)||!list.length)return null;" +
+                "function meta(k){var n=document.querySelector('meta[name=\"'+k+'\"],meta[property=\"'+k+'\"]');return n?n.content:'';}" +
+                "var domain=typeof img_domain==='string'?new URL(img_domain,location.href).href:'';" +
+                "var img=document.querySelector('img.thumb2');" +
+                "var thumb=img?(img.getAttribute('o_src')||img.currentSrc||img.src):'';" +
+                "if(thumb)thumb=new URL(thumb,domain||location.href).href;" +
+                "return JSON.stringify({seriesId:id[1]," +
+                "title:document.title.replace(/\\s*(?:BlackToon|블랙툰).*$/i,'').trim()," +
+                "description:meta('description')||meta('og:description'),thumbnail:thumb,imageDomain:domain," +
+                "tags:Array.from(document.querySelectorAll('span.badge-light')).map(function(n){return n.textContent.trim();}).join(', ')," +
+                "episodes:list.map(function(e){return {u:e.u,t:e.t,od:e.od};})});" +
+                "}catch(e){return null;}})()";
+        downloadButton.setEnabled(false);
+        downloadButton.setText("작품 정보 전달 중…");
+        webView.evaluateJavascript(script, result -> {
+            if (pageUrl == null || !pageUrl.equals(webView.getUrl()) ||
+                    !titleId.equals(seriesKeyFrom(webView.getUrl()))) {
+                updateActionButtons();
+                return;
+            }
+            org.json.JSONObject snapshot = null;
+            try {
+                Object decoded = new org.json.JSONTokener(result == null ? "null" : result).nextValue();
+                if (decoded instanceof String) snapshot = new org.json.JSONObject((String) decoded);
+            } catch (Exception ignored) { }
+            final org.json.JSONObject captured = snapshot;
+            new Thread(() -> {
+                try {
+                    if (captured == null) {
+                        com.webtoonmap.mobile.blacktoon.BlacktoonMetadataStore.remove(activity, titleId);
+                    } else {
+                        com.webtoonmap.mobile.blacktoon.BlacktoonMetadataStore.put(activity, titleId, captured);
+                    }
+                    activity.runOnUiThread(() -> {
+                        if (pageUrl.equals(webView.getUrl()) && !activity.isDestroyed()) {
+                            enqueueDownload(titleId, queued, queueMode);
+                        } else {
+                            updateActionButtons();
+                        }
+                    });
+                } catch (Exception error) {
+                    activity.runOnUiThread(() -> {
+                        updateActionButtons();
+                        Toast.makeText(activity, "작품 정보 저장 실패: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+                }
+            }, "blacktoon-metadata").start();
+        });
+    }
+
+    private void enqueueDownload(String titleId, boolean queued, boolean queueMode) {
         registerSourceJob(titleId, webView.getUrl());
         SeriesDownloadService.enqueue(activity, titleId);
         Toast.makeText(activity, queueMode ? "대기열에 추가했습니다." :

@@ -55,6 +55,10 @@ public final class WolfdotApi {
 
     private WolfdotApi() { }
 
+    public static boolean isSiteHost(String host) {
+        return host != null && host.matches("(?i)(?:www\\.)?wfwf[0-9]+\\.com");
+    }
+
     public static boolean isSeriesKey(String key) {
         return key != null && key.matches(KEY_PREFIX + "[0-9a-f]+");
     }
