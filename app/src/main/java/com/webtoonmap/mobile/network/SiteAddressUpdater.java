@@ -22,48 +22,83 @@ import java.util.regex.Pattern;
 
 public final class SiteAddressUpdater {
     public static final int MAX_INCREMENTS = 20;
+    public static final String MAJORLINK_URL = "https://majorlink2.com";
     private static final int TIMEOUT_MS = 8_000;
     private static final int MAX_HTML_BYTES = 128 * 1024;
 
     public interface Progress {
         void checking(String source, String candidate, int offset);
-        default void verificationBlocked(String source, String current) { }
-        default void fallbackFinished(String source, String address) { }
-    }
-
-    static final class VerificationBlockedException extends java.io.IOException {
-        VerificationBlockedException() { super("자동 접속 확인이 차단되었습니다."); }
+        default void checkingListing(String source, String listingUrl) { }
     }
 
     interface Probe {
         String check(String source, String candidate) throws Exception;
     }
 
-    interface BlacktoonFallback {
-        String fetch() throws Exception;
+    interface AddressListing {
+        Map<String, String> fetch() throws Exception;
     }
 
     private SiteAddressUpdater() { }
 
-    /** Each site scans its own numbers in order; independent sites run concurrently. */
+    public static boolean usesMajorlink(String source) {
+        return "blacktoon".equals(source) || "funbe".equals(source) || "newtoki".equals(source) ||
+                "marumaru".equals(source);
+    }
+
+    /** One shared listing request runs alongside the remaining numbered site scans. */
     public static Map<String, String> fetch(Map<String, String> currentUrls, Progress progress)
             throws Exception {
+        return fetch(currentUrls, progress, SiteAddressUpdater::probe,
+                SiteAddressUpdater::fetchListedAddresses);
+    }
+
+    static Map<String, String> fetch(Map<String, String> currentUrls, Progress progress,
+                                     Probe probe, AddressListing listing) throws Exception {
         ExecutorService workers = Executors.newFixedThreadPool(5);
         Map<String, Future<String>> pending = new LinkedHashMap<>();
+        Future<Map<String, String>> listed = null;
         try {
             for (Map.Entry<String, String> entry : currentUrls.entrySet()) {
                 String source = entry.getKey();
                 String current = entry.getValue();
+                if (usesMajorlink(source)) {
+                    if (progress != null) progress.checkingListing(source, MAJORLINK_URL);
+                    if (listed == null) {
+                        listed = workers.submit(() -> {
+                            try {
+                                return listing.fetch();
+                            } catch (InterruptedException cancelled) {
+                                Thread.currentThread().interrupt();
+                                throw cancelled;
+                            } catch (Exception failed) {
+                                // A listing failure must not discard the other sites' scan results.
+                                return new LinkedHashMap<String, String>();
+                            }
+                        });
+                    }
+                    continue;
+                }
                 pending.put(source, workers.submit(() ->
-                        findReachable(source, current, progress, SiteAddressUpdater::probe)));
+                        findReachable(source, current, progress, probe)));
             }
             Map<String, String> found = new LinkedHashMap<>();
+            if (listed != null) {
+                Map<String, String> addresses = listed.get();
+                for (String source : currentUrls.keySet()) {
+                    if (!usesMajorlink(source)) continue;
+                    String url = normalizeListedAddress(
+                            addresses == null ? null : addresses.get(source), MAJORLINK_URL);
+                    if (url != null) found.put(source, url);
+                }
+            }
             for (Map.Entry<String, Future<String>> entry : pending.entrySet()) {
                 String url = entry.getValue().get();
                 if (url != null) found.put(entry.getKey(), url);
             }
             return found;
         } finally {
+            if (listed != null) listed.cancel(true);
             for (Future<String> future : pending.values()) future.cancel(true);
             workers.shutdownNow();
         }
@@ -71,11 +106,8 @@ public final class SiteAddressUpdater {
 
     static String findReachable(String source, String current, Progress progress, Probe probe)
             throws InterruptedException {
-        return findReachable(source, current, progress, probe, SiteAddressUpdater::fetchBlacktoonAddress);
-    }
-
-    static String findReachable(String source, String current, Progress progress, Probe probe,
-                                BlacktoonFallback fallback) throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+        if (usesMajorlink(source)) return null;
         NumberedAddress start = parse(source, current);
         if (start == null) return null;
         // Current URL plus +1 ... +20, never restarting from a bundled default.
@@ -90,26 +122,6 @@ public final class SiteAddressUpdater {
                         finalAddress.number == start.number + offset) {
                     return finalAddress.url(0);
                 }
-            } catch (VerificationBlockedException blocked) {
-                // An access refusal does not establish that the user's saved address is obsolete.
-                // Use the address listing only when the saved Blacktoon address refuses verification.
-                if (offset == 0) {
-                    if (progress != null) progress.verificationBlocked(source, current);
-                    if ("blacktoon".equals(source)) {
-                        String listed = null;
-                        try {
-                            NumberedAddress address = parse(source, fallback.fetch());
-                            if (address != null) listed = address.url(0);
-                        } catch (InterruptedException cancelled) {
-                            Thread.currentThread().interrupt();
-                            throw cancelled;
-                        } catch (Exception ignored) { }
-                        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
-                        if (progress != null) progress.fallbackFinished(source, listed);
-                        if (listed != null) return listed;
-                    }
-                    return current;
-                }
             } catch (InterruptedException cancelled) {
                 Thread.currentThread().interrupt();
                 throw cancelled;
@@ -120,23 +132,64 @@ public final class SiteAddressUpdater {
         return null;
     }
 
-    private static String fetchBlacktoonAddress() throws Exception {
-        Document document = Jsoup.connect("https://majorlink2.com")
+    private static Map<String, String> fetchListedAddresses() throws Exception {
+        Document document = Jsoup.connect(MAJORLINK_URL)
                 .userAgent(ConnectionCompatibility.requestUserAgent())
                 .timeout(15_000).maxBodySize(2 * 1024 * 1024).followRedirects(true).get();
-        return parseBlacktoonAddress(document);
+        return parseListedAddresses(document);
     }
 
-    static String parseBlacktoonAddress(Document document) {
+    static Map<String, String> parseListedAddresses(Document document) {
+        Map<String, String> addresses = new LinkedHashMap<>();
         for (Element anchor : document.select("a[href]")) {
             String name = anchor.attr("title").trim();
-            if (name.isEmpty()) name = anchor.text();
-            name = name.replaceAll("\\s+", "");
-            if (!"블랙툰".equals(name) && !"blacktoon".equalsIgnoreCase(name)) continue;
-            NumberedAddress address = parse("blacktoon", anchor.absUrl("href"));
-            if (address != null) return address.url(0);
+            if (name.isEmpty() || name.toLowerCase(Locale.ROOT).contains("http")) {
+                name = anchor.ownText().trim();
+                if (name.isEmpty()) name = anchor.text();
+            }
+            name = name.replaceFirst("^\\s*[0-9]+\\s*", "")
+                    .replaceAll("[\\s\\u00a0]+", "").toLowerCase(Locale.ROOT);
+            String source;
+            switch (name) {
+                case "블랙툰": case "blacktoon": source = "blacktoon"; break;
+                case "펀비": case "funbe": source = "funbe"; break;
+                case "뉴토끼": case "newtoki": source = "newtoki"; break;
+                case "마루마루": case "marumaru": source = "marumaru"; break;
+                default: continue;
+            }
+            String address;
+            try {
+                // Resolve the raw link without losing URI authority details during normalization.
+                String resolved = new URI(document.baseUri())
+                        .resolve(anchor.attr("href").trim()).toASCIIString();
+                address = normalizeListedAddress(resolved, document.baseUri());
+            } catch (Exception invalid) {
+                continue;
+            }
+            if (address != null && !addresses.containsKey(source)) addresses.put(source, address);
         }
-        return null;
+        return addresses;
+    }
+
+    private static String normalizeListedAddress(String url, String listingUrl) {
+        if (url == null) return null;
+        try {
+            URI uri = new URI(url.trim());
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null ||
+                    uri.getUserInfo() != null || (uri.getPort() != -1 && uri.getPort() != 443)) {
+                return null;
+            }
+            host = host.toLowerCase(Locale.ROOT);
+            String listingHost = new URI(listingUrl).getHost();
+            if (host.matches("(?:www\\.)?majorlink[0-9]*\\.com") ||
+                    (listingHost != null && host.replaceFirst("^www\\.", "")
+                            .equalsIgnoreCase(listingHost.replaceFirst("^www\\.", "")))) return null;
+            // The listing identifies the site. Newtoki may use a completely different hostname.
+            return new URI("https", null, host, -1, null, null, null).toASCIIString();
+        } catch (Exception invalid) {
+            return null;
+        }
     }
 
     static String probe(String source, String candidate) throws Exception {
@@ -153,9 +206,6 @@ public final class SiteAddressUpdater {
             NetworkRetry.track(connection);
             try {
                 int code = connection.getResponseCode();
-                if ("blacktoon".equals(source) && code == 403) {
-                    throw new VerificationBlockedException();
-                }
                 if (code >= 300 && code < 400) {
                     String location = connection.getHeaderField("Location");
                     if (location == null) return null;

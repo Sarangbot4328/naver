@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.webtoonmap.mobile.MainActivity;
 import com.webtoonmap.mobile.R;
 import com.webtoonmap.mobile.ui.SystemBarInsets;
+import com.webtoonmap.mobile.ui.AppTheme;
 
 public final class ActivationActivity extends AppCompatActivity {
     private View nameSection;
@@ -24,6 +25,7 @@ public final class ActivationActivity extends AppCompatActivity {
     private TelegramActivationClient telegramClient;
 
     @Override protected void onCreate(Bundle state) {
+        AppTheme.apply(this);
         super.onCreate(state);
         if (ActivationStore.isActivated(this)) {
             openMain();

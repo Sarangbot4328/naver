@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
@@ -51,6 +52,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private boolean pageMode;
     private boolean rightToLeftPageOrder;
     private boolean episodeTransitionPending;
+    private boolean episodeLoadFailed;
     private boolean autoAdvanceEnabled;
     private boolean autoAdvancePaused;
     private boolean viewerResumed;
@@ -58,6 +60,8 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private float webtoonTouchStartY;
     private float webtoonTouchStartX;
     private boolean webtoonAtBottomOnTouchStart;
+    private boolean webtoonGestureTracking;
+    private int webtoonGestureGeneration;
     private long lastWebtoonTapAt;
     private float lastWebtoonTapX;
     private float lastWebtoonTapY;
@@ -69,10 +73,14 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private final Handler autoAdvanceHandler = new Handler(Looper.getMainLooper());
     private final Runnable autoAdvanceTask = this::performAutoAdvance;
     private int loadGeneration;
+    private final ViewerNavigationGuard navigationGuard = new ViewerNavigationGuard();
 
     @Override protected void onCreate(Bundle state) {
+        AppTheme.apply(this);
         super.onCreate(state);
         setContentView(R.layout.activity_viewer);
+        getWindow().setStatusBarColor(android.graphics.Color.rgb(17, 17, 17));
+        getWindow().setNavigationBarColor(android.graphics.Color.rgb(17, 17, 17));
         SystemBarInsets.apply(this, findViewById(R.id.viewer_root), false);
         titleId = getIntent().getStringExtra("title_id");
         int episodeNo = getIntent().getIntExtra("episode_no", -1);
@@ -100,7 +108,9 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         previous = findViewById(R.id.previous);
         next = findViewById(R.id.next);
         findViewById(R.id.back).setOnClickListener(v -> finish());
-        previous.setOnClickListener(v -> loadEpisode(episodeIndex - 1, null));
+        previous.setOnClickListener(v -> {
+            if (!episodeTransitionPending) loadEpisode(episodeIndex - 1, null);
+        });
         next.setOnClickListener(v -> requestNextEpisode());
 
         pageMode = SourceSettings.isPageMode(this);
@@ -134,6 +144,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         saveCurrentReadingPosition();
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
         episodeTransitionPending = true;
+        episodeLoadFailed = false;
         episodeIndex = index;
         EpisodeItem episode = episodes.get(index);
         currentPage = initialPage != null ? Math.max(0, initialPage)
@@ -151,6 +162,11 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         next.setEnabled(index + 1 < episodes.size());
 
         int generation = ++loadGeneration;
+        navigationGuard.loadStarted(generation);
+        webtoonGestureTracking = false;
+        webtoonAtBottomOnTouchStart = false;
+        previous.setEnabled(false);
+        next.setEnabled(false);
         int initialPageForLoad = currentPage;
         int initialScrollForLoad = currentScrollPosition;
         webView.loadData("<html><body style='background:#111;color:#aaa;text-align:center;padding-top:80px'>ZIP 회차를 여는 중…</body></html>",
@@ -165,44 +181,50 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 boolean hasNext = index + 1 < episodes.size();
                 String html = pageMode
                         ? buildPageHtml(images, hasNext, initialPageForLoad, generation)
-                        : buildScrollHtml(images, hasNext, initialScrollForLoad);
+                        : buildScrollHtml(images, hasNext, initialScrollForLoad, generation);
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
-                    episodeTransitionPending = false;
                     ViewedSeriesHistory.record(OfflineViewerActivity.this, series);
                     LibraryDatabase.get(OfflineViewerActivity.this)
                             .markEpisodeViewed(titleId, episode.number);
                     webView.loadDataWithBaseURL("file://" + dir.getAbsolutePath() + "/", html,
                             "text/html", "UTF-8", null);
-                    scheduleAutoAdvance();
                 });
             } catch (Exception e) {
                 String message = e.getMessage() == null ? "ZIP 회차를 열지 못했습니다." : e.getMessage();
                 runOnUiThread(() -> {
                     if (generation != loadGeneration || isFinishing()) return;
-                    episodeTransitionPending = false;
+                    episodeLoadFailed = true;
                     webView.loadData("<html><body style='background:#111;color:#ff8a80;padding:30px'>" +
-                                    escapeHtml(message) + "</body></html>", "text/html", "UTF-8");
+                                    escapeHtml(message) + "</body><script>window.addEventListener('load',function(){" +
+                                    "if(window.AndroidViewer){AndroidViewer.onDocumentReady(" + generation +
+                                    ");}});</script></html>", "text/html", "UTF-8");
                 });
             }
         });
     }
 
     private void requestNextEpisode() {
-        if (episodeTransitionPending || episodeIndex + 1 >= episodes.size()) return;
+        requestNextEpisode(loadGeneration);
+    }
+
+    private boolean requestNextEpisode(int generation) {
+        if (episodeTransitionPending || episodeIndex + 1 >= episodes.size() ||
+                !navigationGuard.tryAdvance(generation, SystemClock.uptimeMillis())) return false;
         loadEpisode(episodeIndex + 1, null);
+        return true;
     }
 
     private void scheduleAutoAdvance() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceTask);
         if (!autoAdvanceEnabled || autoAdvancePaused || !viewerResumed ||
-                episodeTransitionPending || isFinishing()) return;
+                episodeTransitionPending || episodeLoadFailed || isFinishing()) return;
         autoAdvanceHandler.postDelayed(autoAdvanceTask, autoAdvanceSeconds * 1000L);
     }
 
     private void performAutoAdvance() {
         if (!autoAdvanceEnabled || autoAdvancePaused || !viewerResumed ||
-                episodeTransitionPending || isFinishing()) return;
+                episodeTransitionPending || episodeLoadFailed || isFinishing()) return;
         if (pageMode) {
             webView.evaluateJavascript(
                     "if(window.autoAdvancePage){window.autoAdvancePage();}", null);
@@ -233,10 +255,18 @@ public final class OfflineViewerActivity extends AppCompatActivity {
     private void configureWebtoonEndGesture() {
         webView.setOnTouchListener((view, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                webtoonGestureTracking = !episodeTransitionPending && event.getPointerCount() == 1;
+                webtoonGestureGeneration = loadGeneration;
                 webtoonTouchStartX = event.getX();
                 webtoonTouchStartY = event.getY();
-                webtoonAtBottomOnTouchStart = isWebtoonAtBottom();
+                webtoonAtBottomOnTouchStart = webtoonGestureTracking && isWebtoonAtBottom();
             } else if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                if (!webtoonGestureTracking || webtoonGestureGeneration != loadGeneration) {
+                    webtoonGestureTracking = false;
+                    webtoonAtBottomOnTouchStart = false;
+                    return episodeTransitionPending || webtoonGestureGeneration != loadGeneration;
+                }
+                webtoonGestureTracking = false;
                 float dx = event.getX() - webtoonTouchStartX;
                 float dy = event.getY() - webtoonTouchStartY;
                 float tapThreshold = 24f * getResources().getDisplayMetrics().density;
@@ -260,15 +290,26 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 }
                 float swipeDistance = event.getY() - webtoonTouchStartY;
                 float threshold = 48f * getResources().getDisplayMetrics().density;
-                if (webtoonAtBottomOnTouchStart && swipeDistance < -threshold) {
-                    requestNextEpisode();
+                if (webtoonAtBottomOnTouchStart && swipeDistance < -threshold && Math.abs(dy) > Math.abs(dx)) {
+                    webtoonAtBottomOnTouchStart = false;
+                    // Consume the release and cancel WebView's fling before loading the next document.
+                    MotionEvent cancel = MotionEvent.obtain(event);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    webView.onTouchEvent(cancel);
+                    cancel.recycle();
+                    requestNextEpisode(webtoonGestureGeneration);
+                    return true;
                 }
                 webtoonAtBottomOnTouchStart = false;
             } else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                webtoonGestureTracking = false;
                 webtoonAtBottomOnTouchStart = false;
                 lastWebtoonTapAt = 0L;
+            } else if (event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
+                webtoonGestureTracking = false;
+                webtoonAtBottomOnTouchStart = false;
             }
-            return false;
+            return episodeTransitionPending;
         });
     }
 
@@ -280,7 +321,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         return contentHeight <= webView.getScrollY() + webView.getHeight() + tolerance;
     }
 
-    private String buildScrollHtml(File[] images, boolean hasNext, int initialScrollPosition) {
+    private String buildScrollHtml(File[] images, boolean hasNext, int initialScrollPosition, int generation) {
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=3'><style>html,body{margin:0;background:#111}img{display:block;width:100%;height:auto}</style></head><body>");
         boolean restoring = initialScrollPosition > 0;
         for (File image : images) {
@@ -290,9 +331,10 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         html.append("<div style='height:64px;color:#aaa;text-align:center;padding-top:30px'>")
                 .append(hasNext ? "위로 한 번 더 넘기면 다음 회차" : "마지막 회차입니다")
                 .append("</div><script>")
+                .append("const generation=").append(generation).append(";")
                 .append("const restoreY=").append(Math.max(0, initialScrollPosition)).append(";")
                 .append("let userMoved=false,reportTimer=null;")
-                .append("function reportScroll(){if(window.AndroidViewer&&AndroidViewer.onScrollChanged){AndroidViewer.onScrollChanged(Math.max(0,Math.round(window.scrollY)));}}")
+                .append("function reportScroll(){if(window.AndroidViewer&&AndroidViewer.onScrollChanged){AndroidViewer.onScrollChanged(Math.max(0,Math.round(window.scrollY)),generation);}}")
                 .append("function queueReport(){if(reportTimer)clearTimeout(reportTimer);reportTimer=setTimeout(reportScroll,150);}")
                 .append("function restoreScroll(){if(!userMoved&&restoreY>0){window.scrollTo(0,restoreY);queueReport();}}")
                 .append("window.addEventListener('scroll',queueReport,{passive:true});")
@@ -301,7 +343,7 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("window.addEventListener('wheel',function(){userMoved=true;},{passive:true});")
                 .append("window.addEventListener('pagehide',reportScroll);")
                 .append("document.querySelectorAll('img').forEach(function(img){img.addEventListener('load',restoreScroll,{once:true});});")
-                .append("window.addEventListener('load',function(){restoreScroll();setTimeout(restoreScroll,250);setTimeout(restoreScroll,750);setTimeout(restoreScroll,1500);setTimeout(reportScroll,1700);});")
+                .append("window.addEventListener('load',function(){restoreScroll();setTimeout(restoreScroll,250);setTimeout(restoreScroll,750);setTimeout(restoreScroll,1500);setTimeout(reportScroll,1700);if(window.AndroidViewer){AndroidViewer.onDocumentReady(generation);}});")
                 .append("</script></body></html>");
         return html.toString();
     }
@@ -340,15 +382,15 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("const hasNextEpisode=").append(hasNext).append(";")
                 .append("const autoAdvanceEnabled=").append(autoAdvanceEnabled).append(";")
                 .append("let currentPage=").append(Math.max(0, initialPage)).append(";")
-                .append("let startX=0,startY=0,tracking=false,wheelLocked=false,lastTapAt=0,tapTimer=null;")
+                .append("let startX=0,startY=0,tracking=false,wheelLocked=false,lastTapAt=0,tapTimer=null,nextEpisodeRequested=false;")
                 .append("function sizeSlices(){document.querySelectorAll('.slice').forEach(function(slice){const ratio=parseFloat(slice.dataset.ratio)||1;const w=Math.min(window.innerWidth,window.innerHeight*ratio);slice.style.width=w+'px';slice.style.height=(w/ratio)+'px';});}")
                 .append("function maxPage(){return Math.max(0,pager.children.length-1);}")
                 .append("function isZoomed(){return window.visualViewport&&window.visualViewport.scale>1.05;}")
                 .append("function reportPage(){if(pager.children.length&&window.AndroidViewer&&AndroidViewer.onPageChanged){AndroidViewer.onPageChanged(currentPage,generation);}}")
                 .append("function goToPage(page,animated){currentPage=Math.max(0,Math.min(page,maxPage()));pager.style.transition=animated?'transform 180ms ease-out':'none';pager.style.transform='translate3d('+(-currentPage*window.innerWidth)+'px,0,0)';reportPage();}")
-                .append("function turnPage(direction,animated){if(direction>0&&currentPage>=maxPage()){if(hasNextEpisode&&window.AndroidViewer&&AndroidViewer.onNextEpisodeRequested){AndroidViewer.onNextEpisodeRequested();}else{goToPage(maxPage(),animated);}return;}goToPage(currentPage+direction,animated);}")
+                .append("function turnPage(direction,animated){if(nextEpisodeRequested)return;if(direction>0&&currentPage>=maxPage()){if(hasNextEpisode&&window.AndroidViewer&&AndroidViewer.onNextEpisodeRequested){nextEpisodeRequested=true;tracking=false;if(tapTimer){clearTimeout(tapTimer);tapTimer=null;}AndroidViewer.onNextEpisodeRequested(generation);}else{goToPage(maxPage(),animated);}return;}goToPage(currentPage+direction,animated);}")
                 .append("function autoAdvancePage(){const page=pager.children[currentPage];if(page&&page.scrollTop+page.clientHeight<page.scrollHeight-2){page.scrollBy({top:Math.max(1,page.clientHeight*0.9),behavior:'smooth'});}else{turnPage(1,true);}}")
-                .append("function handleTap(touch){const direction=touch.clientX>=window.innerWidth/2?1:-1;if(!autoAdvanceEnabled){turnPage(direction,true);return;}const now=Date.now();if(now-lastTapAt<=350){if(tapTimer){clearTimeout(tapTimer);tapTimer=null;}lastTapAt=0;if(window.AndroidViewer&&AndroidViewer.onAutoAdvanceToggleRequested){AndroidViewer.onAutoAdvanceToggleRequested();}return;}lastTapAt=now;tapTimer=setTimeout(function(){tapTimer=null;turnPage(direction,true);},350);}")
+                .append("function handleTap(touch){if(nextEpisodeRequested)return;const direction=touch.clientX>=window.innerWidth/2?1:-1;if(!autoAdvanceEnabled){turnPage(direction,true);return;}const now=Date.now();if(now-lastTapAt<=350){if(tapTimer){clearTimeout(tapTimer);tapTimer=null;}lastTapAt=0;if(window.AndroidViewer&&AndroidViewer.onAutoAdvanceToggleRequested){AndroidViewer.onAutoAdvanceToggleRequested(generation);}return;}lastTapAt=now;tapTimer=setTimeout(function(){tapTimer=null;turnPage(direction,true);},350);}")
                 .append("pager.addEventListener('touchstart',function(e){if(e.touches.length!==1||isZoomed()){tracking=false;return;}tracking=true;startX=e.touches[0].clientX;startY=e.touches[0].clientY;},{passive:true});")
                 .append("pager.addEventListener('touchmove',function(e){if(!tracking||e.touches.length!==1){tracking=false;return;}const dx=e.touches[0].clientX-startX;const dy=e.touches[0].clientY-startY;if(Math.abs(dx)>Math.abs(dy)){e.preventDefault();}},{passive:false});")
                 .append("pager.addEventListener('touchend',function(e){if(!tracking||e.changedTouches.length===0)return;tracking=false;const touch=e.changedTouches[0];const dx=touch.clientX-startX;const dy=touch.clientY-startY;const threshold=Math.max(40,window.innerWidth*0.08);if(Math.abs(dx)>=threshold&&Math.abs(dx)>Math.abs(dy)){turnPage(dx<0?1:-1,true);}else if(Math.hypot(dx,dy)<=20){if(autoAdvanceEnabled)e.preventDefault();handleTap(touch);}else{goToPage(currentPage,true);}},{passive:false});")
@@ -356,9 +398,10 @@ public final class OfflineViewerActivity extends AppCompatActivity {
                 .append("window.addEventListener('wheel',function(e){if(isZoomed()||Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;e.preventDefault();if(wheelLocked)return;wheelLocked=true;turnPage(e.deltaX>0?1:-1,true);setTimeout(function(){wheelLocked=false;},350);},{passive:false});")
                 .append("window.addEventListener('keydown',function(e){if(e.key==='ArrowRight'){e.preventDefault();turnPage(1,true);}else if(e.key==='ArrowLeft'){e.preventDefault();turnPage(-1,true);}});")
                 .append("window.addEventListener('resize',function(){sizeSlices();goToPage(currentPage,false);});")
-                .append("window.addEventListener('load',function(){sizeSlices();goToPage(currentPage,false);});")
+                .append("window.addEventListener('load',function(){sizeSlices();goToPage(currentPage,false);if(window.AndroidViewer){AndroidViewer.onDocumentReady(generation);}});")
                 .append("window.getCurrentPage=function(){return currentPage;};")
                 .append("window.turnPage=turnPage;")
+                .append("window.unlockNextEpisodeRequest=function(expectedGeneration){if(expectedGeneration===generation){nextEpisodeRequested=false;}};")
                 .append("window.autoAdvancePage=autoAdvancePage;")
                 .append("sizeSlices();goToPage(currentPage,false);")
                 .append("</script></body></html>");
@@ -388,21 +431,45 @@ public final class OfflineViewerActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
-        public void onScrollChanged(int position) {
-            currentScrollPosition = Math.max(0, position);
-        }
-
-        @JavascriptInterface
-        public void onNextEpisodeRequested() {
+        public void onScrollChanged(int position, int generation) {
             runOnUiThread(() -> {
-                if (!isFinishing()) requestNextEpisode();
+                if (generation == loadGeneration && !pageMode && !isDestroyed()) {
+                    currentScrollPosition = Math.max(0, position);
+                }
             });
         }
 
         @JavascriptInterface
-        public void onAutoAdvanceToggleRequested() {
+        public void onNextEpisodeRequested(int generation) {
             runOnUiThread(() -> {
-                if (!isFinishing()) toggleAutoAdvance();
+                if (isFinishing() || isDestroyed()) return;
+                if (!requestNextEpisode(generation) && generation == loadGeneration && !episodeTransitionPending) {
+                    webView.evaluateJavascript("if(window.unlockNextEpisodeRequest){window.unlockNextEpisodeRequest(" +
+                            generation + ");}", null);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void onAutoAdvanceToggleRequested(int generation) {
+            runOnUiThread(() -> {
+                if (generation == loadGeneration && !isFinishing()) toggleAutoAdvance();
+            });
+        }
+
+        @JavascriptInterface
+        public void onDocumentReady(int generation) {
+            runOnUiThread(() -> {
+                if (generation != loadGeneration || isFinishing() || isDestroyed()) return;
+                webView.postVisualStateCallback(generation, new WebView.VisualStateCallback() {
+                    @Override public void onComplete(long requestId) {
+                        if (isFinishing() || isDestroyed() || !navigationGuard.documentReady(generation)) return;
+                        episodeTransitionPending = false;
+                        previous.setEnabled(episodeIndex > 0);
+                        next.setEnabled(episodeIndex + 1 < episodes.size());
+                        scheduleAutoAdvance();
+                    }
+                });
             });
         }
     }

@@ -21,6 +21,7 @@ import com.webtoonmap.mobile.ui.NaverChannelView;
 import com.webtoonmap.mobile.ui.ServerChannelView;
 import com.webtoonmap.mobile.ui.SettingsChannelView;
 import com.webtoonmap.mobile.ui.SystemBarInsets;
+import com.webtoonmap.mobile.ui.AppTheme;
 import com.webtoonmap.mobile.storage.SourceSettings;
 
 public final class MainActivity extends AppCompatActivity {
@@ -34,6 +35,7 @@ public final class MainActivity extends AppCompatActivity {
     private SettingsChannelView settingsView;
     private int selectedChannel = 0;
     @Override protected void onCreate(Bundle state) {
+        AppTheme.apply(this);
         super.onCreate(state);
         if (!ActivationStore.isActivated(this)) {
             startActivity(new Intent(this, ActivationActivity.class));
@@ -58,7 +60,10 @@ public final class MainActivity extends AppCompatActivity {
         });
         downloadsButton.setOnClickListener(v -> showDownloads());
         settingsButton.setOnClickListener(v -> showSettings());
-        showNaver();
+        int restoredChannel = state == null ? 0 : state.getInt("selected_channel", 0);
+        if (restoredChannel == 2) showSettings();
+        else if (restoredChannel == 1) showDownloads();
+        else showNaver();
         requestNotificationPermission();
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -152,6 +157,11 @@ public final class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.POST_NOTIFICATIONS}, 400);
         }
+    }
+
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        outState.putInt("selected_channel", selectedChannel);
+        super.onSaveInstanceState(outState);
     }
 
     @Override protected void onDestroy() {

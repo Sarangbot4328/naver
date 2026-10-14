@@ -31,7 +31,7 @@
             android:layout_height="wrap_content" android:minHeight="48dp" android:minWidth="0dp"
             android:layout_weight="1" android:background="?attr/selectableItemBackground"
             android:paddingHorizontal="2dp" android:text="이어받기" android:textAllCaps="false"
-            android:textSize="12sp" android:textColor="#96E5AB" />
+            android:textSize="12sp" android:textColor="@color/card_resume" />
         <Button android:id="@+id/delete" android:layout_width="0dp"
             android:layout_height="wrap_content" android:minHeight="48dp" android:minWidth="0dp"
             android:layout_weight="1" android:background="?attr/selectableItemBackground"

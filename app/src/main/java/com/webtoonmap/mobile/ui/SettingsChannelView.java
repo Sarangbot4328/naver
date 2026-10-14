@@ -23,6 +23,7 @@ import com.webtoonmap.mobile.network.SiteAddressUpdater;
 import com.webtoonmap.mobile.server.LanServerConnector;
 import com.webtoonmap.mobile.server.LanServerSettings;
 import com.webtoonmap.mobile.storage.SourceSettings;
+import com.webtoonmap.mobile.storage.ThemeSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
 
 import java.util.ArrayList;
@@ -37,11 +38,13 @@ public final class SettingsChannelView extends FrameLayout {
             SourceSettings.SOURCE_WOLFDOT,
             SourceSettings.SOURCE_TOONKOR,
             SourceSettings.SOURCE_FUNBE,
-            SourceSettings.SOURCE_NEWTOKI
+            SourceSettings.SOURCE_NEWTOKI,
+            SourceSettings.SOURCE_MARUMARU
     };
     private final MainActivity activity;
     private final TextView version;
     private final RadioGroup sourceGroup;
+    private final RadioGroup themeGroup;
     private final RadioGroup viewModeGroup;
     private final RadioGroup downloadModeGroup;
     private final View ililtoonAddressBox;
@@ -51,6 +54,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final View toonkorAddressBox;
     private final View funbeAddressBox;
     private final View newtokiAddressBox;
+    private final View marumaruAddressBox;
     private final View serverAddressBox;
     private final EditText ililtoonUrl;
     private final EditText blacktoonUrl;
@@ -59,6 +63,7 @@ public final class SettingsChannelView extends FrameLayout {
     private final EditText toonkorUrl;
     private final EditText funbeUrl;
     private final EditText newtokiUrl;
+    private final EditText marumaruUrl;
     private final EditText serverUrl;
     private final TextView serverConnectionStatus;
     private final Button siteAddressUpdateButton;
@@ -93,6 +98,14 @@ public final class SettingsChannelView extends FrameLayout {
         LayoutInflater.from(activity).inflate(R.layout.channel_settings, this, true);
         version = findViewById(R.id.app_version);
         sourceGroup = findViewById(R.id.source_group);
+        themeGroup = findViewById(R.id.theme_group);
+        themeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (refreshing) return;
+            String theme = checkedId == R.id.theme_black ? ThemeSettings.BLACK : ThemeSettings.WHITE;
+            if (theme.equals(ThemeSettings.getTheme(activity))) return;
+            ThemeSettings.setTheme(activity, theme);
+            AppTheme.apply(activity);
+        });
         viewModeGroup = findViewById(R.id.view_mode_group);
         downloadModeGroup = findViewById(R.id.download_mode_group);
         downloadModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
@@ -107,6 +120,7 @@ public final class SettingsChannelView extends FrameLayout {
         toonkorAddressBox = findViewById(R.id.toonkor_address_box);
         funbeAddressBox = findViewById(R.id.funbe_address_box);
         newtokiAddressBox = findViewById(R.id.newtoki_address_box);
+        marumaruAddressBox = findViewById(R.id.marumaru_address_box);
         serverAddressBox = findViewById(R.id.server_address_box);
         ililtoonUrl = findViewById(R.id.ililtoon_url);
         blacktoonUrl = findViewById(R.id.blacktoon_url);
@@ -115,6 +129,7 @@ public final class SettingsChannelView extends FrameLayout {
         toonkorUrl = findViewById(R.id.toonkor_url);
         funbeUrl = findViewById(R.id.funbe_url);
         newtokiUrl = findViewById(R.id.newtoki_url);
+        marumaruUrl = findViewById(R.id.marumaru_url);
         serverUrl = findViewById(R.id.server_url);
         serverConnectionStatus = findViewById(R.id.server_connection_status);
         siteAddressUpdateButton = findViewById(R.id.refresh_site_addresses);
@@ -195,6 +210,7 @@ public final class SettingsChannelView extends FrameLayout {
         findViewById(R.id.save_toonkor_url).setOnClickListener(v -> saveToonkorUrl());
         findViewById(R.id.save_funbe_url).setOnClickListener(v -> saveFunbeUrl());
         findViewById(R.id.save_newtoki_url).setOnClickListener(v -> saveNewtokiUrl());
+        findViewById(R.id.save_marumaru_url).setOnClickListener(v -> saveMarumaruUrl());
         findViewById(R.id.save_server_url).setOnClickListener(v -> saveServerUrl());
         siteAddressUpdateButton.setOnClickListener(v -> refreshSiteAddresses());
         importButton.setOnClickListener(v -> {
@@ -206,6 +222,7 @@ public final class SettingsChannelView extends FrameLayout {
 
     public void refresh() {
         refreshing = true;
+        themeGroup.check(ThemeSettings.isBlack(activity) ? R.id.theme_black : R.id.theme_white);
         downloadModeGroup.check(SourceSettings.isDownloadTabletMode(activity)
                 ? R.id.download_mode_tablet : R.id.download_mode_list);
         String source = SourceSettings.getSource(activity);
@@ -223,6 +240,7 @@ public final class SettingsChannelView extends FrameLayout {
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
         funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
         newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
+        marumaruUrl.setText(SourceSettings.getMarumaruUrl(activity));
         String host = LanServerSettings.getHost(activity);
         int port = LanServerSettings.getPort(activity);
         if (host != null && !host.isEmpty()) {
@@ -253,7 +271,7 @@ public final class SettingsChannelView extends FrameLayout {
                     .getPackageInfo(activity.getPackageName(), 0).versionName;
             version.setText("버전 " + name);
         } catch (Exception ignored) {
-            version.setText("\uBC84\uC804 1.5.12");
+            version.setText("버전 " + com.webtoonmap.mobile.BuildConfig.VERSION_NAME);
         }
         refreshing = false;
     }
@@ -426,12 +444,10 @@ public final class SettingsChannelView extends FrameLayout {
         siteAddressUpdateButton.setEnabled(false);
         siteAddressUpdateButton.setText("주소 확인 중…");
         siteAddressUpdateStatus.setText(
-                "현재 주소부터 번호를 하나씩 올려 +20까지 확인하는 중…");
+                "메이저링크 주소 조회와 늑대닷컴·툰코 번호 확인 중…");
 
         Map<String, String> oldUrls = new java.util.LinkedHashMap<>();
         Map<String, String> progressLines = new java.util.LinkedHashMap<>();
-        java.util.Set<String> blockedChecks = java.util.concurrent.ConcurrentHashMap.newKeySet();
-        java.util.Set<String> majorlinkMatches = java.util.concurrent.ConcurrentHashMap.newKeySet();
         for (String source : AUTOMATIC_ADDRESS_SOURCES) {
             oldUrls.put(source, currentUrlForSource(source));
             progressLines.put(source, automaticSourceName(source) + ": 확인 대기");
@@ -449,17 +465,13 @@ public final class SettingsChannelView extends FrameLayout {
                                     siteAddressUpdateStatus.setText(String.join("\n", progressLines.values()));
                                 });
                             }
-                            @Override public void verificationBlocked(String source, String current) {
-                                blockedChecks.add(source);
+                            @Override public void checkingListing(String source, String listingUrl) {
                                 post(() -> {
                                     if (!updatingSiteAddresses) return;
                                     progressLines.put(source, automaticSourceName(source) +
-                                            ": 자동 확인 차단 · 메이저링크 주소 확인 중…");
+                                            ": 메이저링크에서 주소 확인 중…");
                                     siteAddressUpdateStatus.setText(String.join("\n", progressLines.values()));
                                 });
-                            }
-                            @Override public void fallbackFinished(String source, String address) {
-                                if (address != null) majorlinkMatches.add(source);
                             }
                         });
                 List<String> changed = new ArrayList<>();
@@ -477,25 +489,22 @@ public final class SettingsChannelView extends FrameLayout {
                         details.append("• ").append(name).append(": 확인 중 수동 변경한 주소 유지\n");
                         continue;
                     }
-                    if (blockedChecks.contains(source) && !majorlinkMatches.contains(source)) {
-                        addresses.remove(source);
+                    if (newUrl == null) {
                         missing.add(name);
                         details.append("• ").append(name)
-                                .append(": 자동 확인 차단 · 메이저링크 조회 실패 · 기존 주소 유지\n");
-                    } else if (newUrl == null) {
-                        missing.add(name);
-                        details.append("• ").append(name)
-                                .append(": 현재 주소부터 +20까지 확인 실패 · 기존 주소 유지\n");
+                                .append(SiteAddressUpdater.usesMajorlink(source)
+                                        ? ": 메이저링크 조회 실패 또는 주소 없음 · 기존 주소 유지\n"
+                                        : ": 현재 주소부터 +20까지 확인 실패 · 기존 주소 유지\n");
                     } else if (newUrl.equals(oldUrl)) {
                         unchanged.add(name);
                         details.append("• ").append(name)
-                                .append(majorlinkMatches.contains(source)
+                                .append(SiteAddressUpdater.usesMajorlink(source)
                                         ? ": 메이저링크와 현재 주소 일치 · 유지\n"
                                         : ": 현재 주소 접속 확인 · 유지\n");
                     } else {
                         changed.add(name);
                         details.append("• ").append(name)
-                                .append(majorlinkMatches.contains(source) ? " · 메이저링크에서 갱신" : "")
+                                .append(SiteAddressUpdater.usesMajorlink(source) ? " · 메이저링크에서 갱신" : "")
                                 .append("\n  ")
                                 .append(oldUrl).append("\n  → ").append(newUrl).append("\n");
                     }
@@ -526,6 +535,7 @@ public final class SettingsChannelView extends FrameLayout {
         toonkorUrl.setText(SourceSettings.getToonkorUrl(activity));
         funbeUrl.setText(SourceSettings.getFunbeUrl(activity));
         newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
+        marumaruUrl.setText(SourceSettings.getMarumaruUrl(activity));
         activity.applyChannelSettings();
 
         String summary = "갱신 완료 · 변경 " + changed.size() + "개 · 유지 " +
@@ -571,6 +581,9 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
             return SourceSettings.getNewtokiUrl(activity);
         }
+        if (SourceSettings.SOURCE_MARUMARU.equals(source)) {
+            return SourceSettings.getMarumaruUrl(activity);
+        }
         return "";
     }
 
@@ -581,6 +594,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return "툰코";
         if (SourceSettings.SOURCE_FUNBE.equals(source)) return "펀비";
         if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return "뉴토끼";
+        if (SourceSettings.SOURCE_MARUMARU.equals(source)) return "마루마루";
         return source;
     }
     private void saveIliltoonUrl() {
@@ -651,6 +665,16 @@ public final class SettingsChannelView extends FrameLayout {
         newtokiUrl.setText(SourceSettings.getNewtokiUrl(activity));
         activity.applyChannelSettings();
         Toast.makeText(activity, "뉴토끼 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveMarumaruUrl() {
+        if (!SourceSettings.setMarumaruUrl(activity, marumaruUrl.getText().toString())) {
+            invalidUrl();
+            return;
+        }
+        marumaruUrl.setText(SourceSettings.getMarumaruUrl(activity));
+        activity.applyChannelSettings();
+        Toast.makeText(activity, "마루마루 주소를 저장했습니다.", Toast.LENGTH_SHORT).show();
     }
 
     private void saveServerUrl() {
@@ -724,6 +748,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (checkedId == R.id.source_toonkor) return SourceSettings.SOURCE_TOONKOR;
         if (checkedId == R.id.source_funbe) return SourceSettings.SOURCE_FUNBE;
         if (checkedId == R.id.source_newtoki) return SourceSettings.SOURCE_NEWTOKI;
+        if (checkedId == R.id.source_marumaru) return SourceSettings.SOURCE_MARUMARU;
         if (checkedId == R.id.source_site_addresses) return SourceSettings.SOURCE_SITE_ADDRESSES;
         if (checkedId == R.id.source_server) return SourceSettings.SOURCE_SERVER;
         return SourceSettings.SOURCE_NAVER;
@@ -737,6 +762,7 @@ public final class SettingsChannelView extends FrameLayout {
         if (SourceSettings.SOURCE_TOONKOR.equals(source)) return R.id.source_toonkor;
         if (SourceSettings.SOURCE_FUNBE.equals(source)) return R.id.source_funbe;
         if (SourceSettings.SOURCE_NEWTOKI.equals(source)) return R.id.source_newtoki;
+        if (SourceSettings.SOURCE_MARUMARU.equals(source)) return R.id.source_marumaru;
         if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) return R.id.source_site_addresses;
         if (SourceSettings.SOURCE_SERVER.equals(source)) return R.id.source_server;
         return R.id.source_naver;
@@ -750,6 +776,7 @@ public final class SettingsChannelView extends FrameLayout {
         toonkorAddressBox.setVisibility(SourceSettings.SOURCE_TOONKOR.equals(source) ? VISIBLE : GONE);
         funbeAddressBox.setVisibility(SourceSettings.SOURCE_FUNBE.equals(source) ? VISIBLE : GONE);
         newtokiAddressBox.setVisibility(SourceSettings.SOURCE_NEWTOKI.equals(source) ? VISIBLE : GONE);
+        marumaruAddressBox.setVisibility(SourceSettings.SOURCE_MARUMARU.equals(source) ? VISIBLE : GONE);
         serverAddressBox.setVisibility(SourceSettings.SOURCE_SERVER.equals(source) ? VISIBLE : GONE);
     }
 

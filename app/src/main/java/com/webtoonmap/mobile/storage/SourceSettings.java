@@ -17,6 +17,7 @@ public final class SourceSettings {
     public static final String SOURCE_TOONKOR = "toonkor";
     public static final String SOURCE_FUNBE = "funbe";
     public static final String SOURCE_NEWTOKI = "newtoki";
+    public static final String SOURCE_MARUMARU = "marumaru";
     public static final String SOURCE_SITE_ADDRESSES = "site_addresses";
     public static final String SOURCE_SERVER = "server";
     public static final String DEFAULT_JOATOON_URL = "https://joa-new.com";
@@ -28,6 +29,7 @@ public final class SourceSettings {
     public static final String DEFAULT_TOONKOR_URL = "https://toonkor401.com";
     public static final String DEFAULT_FUNBE_URL = "https://funbe673.com";
     public static final String DEFAULT_NEWTOKI_URL = "https://newto29.com";
+    public static final String DEFAULT_MARUMARU_URL = "https://marumaru105.com";
     private static final String LEGACY_DEFAULT_NEWTOKI_URL = "https://newto26.com";
     public static final String SITE_ADDRESSES_URL =
             "https://majorlink2.com/%EC%9B%B9%ED%88%B0";
@@ -45,6 +47,7 @@ public final class SourceSettings {
     private static final String KEY_TOONKOR_URL = "toonkor_url";
     private static final String KEY_FUNBE_URL = "funbe_url";
     private static final String KEY_NEWTOKI_URL = "newtoki_url";
+    private static final String KEY_MARUMARU_URL = "marumaru_url";
     private static final String KEY_COMPATIBILITY_MODE = "compatibility_mode";
     private static final String KEY_VIEW_MODE = "view_mode";
     private static final String KEY_LOW_DATA_MODE = "low_data_mode";
@@ -270,6 +273,14 @@ public final class SourceSettings {
         return setUrl(context, KEY_NEWTOKI_URL, raw);
     }
 
+    public static String getMarumaruUrl(Context context) {
+        return getUrl(context, KEY_MARUMARU_URL, DEFAULT_MARUMARU_URL);
+    }
+
+    public static boolean setMarumaruUrl(Context context, String raw) {
+        return setUrl(context, KEY_MARUMARU_URL, raw);
+    }
+
     public static int applyAutomaticUrls(Context context, Map<String, String> urls) {
         if (urls == null || urls.isEmpty()) return 0;
         SharedPreferences.Editor editor = context
@@ -297,6 +308,7 @@ public final class SourceSettings {
         if (SOURCE_TOONKOR.equals(source)) return "\uD230\uCF54";
         if (SOURCE_FUNBE.equals(source)) return "\uD380\uBE44";
         if (SOURCE_NEWTOKI.equals(source)) return "뉴토끼";
+        if (SOURCE_MARUMARU.equals(source)) return "마루마루";
         if (SOURCE_SITE_ADDRESSES.equals(source)) return "주소 확인";
         return "네이버 웹툰";
     }
@@ -318,6 +330,7 @@ public final class SourceSettings {
         }
         if (SOURCE_FUNBE.equals(source)) return getFunbeUrl(context) + "/%EC%9B%B9%ED%88%B0";
         if (SOURCE_NEWTOKI.equals(source)) return getNewtokiUrl(context);
+        if (SOURCE_MARUMARU.equals(source)) return getMarumaruUrl(context);
         if (SOURCE_SITE_ADDRESSES.equals(source)) return SITE_ADDRESSES_URL;
         return "https://comic.naver.com/webtoon";
     }
@@ -329,6 +342,7 @@ public final class SourceSettings {
         if (SOURCE_TOONKOR.equals(source)) return KEY_TOONKOR_URL;
         if (SOURCE_FUNBE.equals(source)) return KEY_FUNBE_URL;
         if (SOURCE_NEWTOKI.equals(source)) return KEY_NEWTOKI_URL;
+        if (SOURCE_MARUMARU.equals(source)) return KEY_MARUMARU_URL;
         return null;
     }
     private static boolean setUrl(Context context, String key, String raw) {
@@ -350,7 +364,7 @@ public final class SourceSettings {
         return SOURCE_NAVER.equals(source) || SOURCE_ILILTOON.equals(source) ||
                 SOURCE_BLACKTOON.equals(source) || SOURCE_WOLFDOT.equals(source) ||
                 SOURCE_HITOMI.equals(source) || SOURCE_TOONKOR.equals(source) ||
-                SOURCE_FUNBE.equals(source) || SOURCE_NEWTOKI.equals(source) ||
+                SOURCE_FUNBE.equals(source) || SOURCE_NEWTOKI.equals(source) || SOURCE_MARUMARU.equals(source) ||
                 SOURCE_SITE_ADDRESSES.equals(source) ||
                 SOURCE_SERVER.equals(source);
     }

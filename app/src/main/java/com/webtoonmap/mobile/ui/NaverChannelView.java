@@ -39,6 +39,7 @@ import com.webtoonmap.mobile.hitomi.HitomiApi;
 import com.webtoonmap.mobile.funbe.FunbeApi;
 import com.webtoonmap.mobile.joatoon.JoatoonApi;
 import com.webtoonmap.mobile.newtoki.NewtokiApi;
+import com.webtoonmap.mobile.marumaru.MarumaruApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.ViewedSeriesHistory;
 import com.webtoonmap.mobile.wolfdot.WolfdotApi;
@@ -113,7 +114,7 @@ public final class NaverChannelView extends FrameLayout {
         moveButton.setTextSize(14);
         moveButton.setAllCaps(false);
         moveButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
-                Color.rgb(69, 90, 100)));
+                getResources().getColor(R.color.browse_move, activity.getTheme())));
         LinearLayout.LayoutParams moveParams = new LinearLayout.LayoutParams(dp(76), dp(52));
         moveParams.setMarginStart(dp(6));
         actions.addView(moveButton, moveParams);
@@ -154,7 +155,8 @@ public final class NaverChannelView extends FrameLayout {
                 SourceSettings.SOURCE_BLACKTOON.equals(source) ||
                 SourceSettings.SOURCE_WOLFDOT.equals(source) ||
                 SourceSettings.SOURCE_FUNBE.equals(source) ||
-                SourceSettings.SOURCE_NEWTOKI.equals(source)) {
+                SourceSettings.SOURCE_NEWTOKI.equals(source) ||
+                SourceSettings.SOURCE_MARUMARU.equals(source)) {
             settings.setUserAgentString(ConnectionCompatibility.webViewUserAgent(activity));
         } else if (!SourceSettings.SOURCE_NAVER.equals(source)) {
             settings.setUserAgentString(JoatoonApi.USER_AGENT);
@@ -536,6 +538,9 @@ public final class NaverChannelView extends FrameLayout {
     }
     private String seriesKeyFrom(String url) {
         if (url == null) return null;
+        if (SourceSettings.SOURCE_MARUMARU.equals(source)) {
+            return isMainSiteUrl(url) ? MarumaruApi.seriesKey(url) : null;
+        }
         if (SourceSettings.SOURCE_SITE_ADDRESSES.equals(source)) return null;
         if (SourceSettings.SOURCE_JOATOON.equals(source)) {
             try {
@@ -693,6 +698,12 @@ public final class NaverChannelView extends FrameLayout {
                 if (path != null) {
                     String slug = Uri.decode(path.substring(1));
                     SourceJobStore.register(activity, key, source, pageUrl, slug, "webtoon");
+                }
+            } else if (SourceSettings.SOURCE_MARUMARU.equals(source)) {
+                String path = MarumaruApi.seriesPath(pageUrl);
+                if (path != null) {
+                    SourceJobStore.register(activity, key, source, pageUrl,
+                            path.substring("/work/".length()), "work");
                 }
             } else if (SourceSettings.SOURCE_NEWTOKI.equals(source)) {
                 String table = uri.getQueryParameter("bo_table");

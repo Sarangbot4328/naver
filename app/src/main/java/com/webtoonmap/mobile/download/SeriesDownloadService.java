@@ -32,6 +32,7 @@ import com.webtoonmap.mobile.naver.NaverApi;
 import com.webtoonmap.mobile.network.NetworkRetry;
 import com.webtoonmap.mobile.network.OptionalImageDownloader;
 import com.webtoonmap.mobile.newtoki.NewtokiApi;
+import com.webtoonmap.mobile.marumaru.MarumaruApi;
 import com.webtoonmap.mobile.storage.SourceSettings;
 import com.webtoonmap.mobile.storage.StorageSettings;
 import com.webtoonmap.mobile.storage.WebtoonStorage;
@@ -237,6 +238,8 @@ public final class SeriesDownloadService extends Service {
             downloadFunbe(titleId);
         } else if (NewtokiApi.isSeriesKey(titleId)) {
             downloadNewtoki(titleId);
+        } else if (MarumaruApi.isSeriesKey(titleId)) {
+            downloadMarumaru(titleId);
         } else if (HitomiApi.isSeriesKey(titleId)) {
             downloadHitomi(titleId);
         } else if (JoatoonApi.isSeriesKey(titleId)) {
@@ -681,6 +684,38 @@ public final class SeriesDownloadService extends Service {
 
                     @Override public long retryDelayMs(int failedAttempt) {
                         return Math.min(15_000L, Math.max(1, failedAttempt) * 3_000L);
+                    }
+                });
+    }
+
+    private void downloadMarumaru(String titleId) throws Exception {
+        SourceJobStore.Job job = SourceJobStore.get(this, titleId);
+        if (job == null) {
+            throw new IllegalStateException("마루마루 작품 주소 정보가 없습니다. 작품 페이지에서 다시 다운로드를 눌러 주세요.");
+        }
+        com.webtoonmap.mobile.network.ConnectionCompatibility.configureForWebView(this);
+        String baseUrl = SourceSettings.getMarumaruUrl(this);
+        String pageUrl = job.pageUrl(baseUrl);
+        String cookie = CookieManager.getInstance().getCookie(baseUrl);
+        checkCancelled();
+        update("마루마루 작품 정보를 불러오는 중… · 대기열 " + DownloadQueue.size(this) + "개", 0, 0);
+        MarumaruApi.SeriesInfo info = MarumaruApi.fetchSeriesInfo(pageUrl, cookie);
+        List<ExternalEpisode> episodes = new java.util.ArrayList<>();
+        for (MarumaruApi.EpisodeMeta episode : info.episodes) {
+            episodes.add(new ExternalEpisode(episode.number, episode.title, episode.url));
+        }
+        downloadExternalSeries(titleId, "마루마루", info.title, info.description, info.tags,
+                info.thumbnailUrl, info.pageUrl, cookie, episodes, new ExternalSiteApi() {
+                    @Override public List<String> fetchImages(String episodeUrl) throws Exception {
+                        return MarumaruApi.fetchEpisodeImages(episodeUrl, cookie);
+                    }
+
+                    @Override public byte[] downloadBytes(String imageUrl, String referer) throws Exception {
+                        return MarumaruApi.downloadBytes(imageUrl, referer, cookie);
+                    }
+
+                    @Override public long postEpisodeDelayMs(int completedPosition) {
+                        return 1_000L;
                     }
                 });
     }

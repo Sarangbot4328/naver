@@ -2,6 +2,7 @@ package com.webtoonmap.mobile.ui;
 
 import android.app.Activity;
 import android.view.View;
+import com.webtoonmap.mobile.storage.ThemeSettings;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -16,8 +17,9 @@ public final class SystemBarInsets {
         WindowCompat.setDecorFitsSystemWindows(activity.getWindow(), false);
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
                 activity.getWindow(), activity.getWindow().getDecorView());
-        controller.setAppearanceLightStatusBars(lightStatusBar);
-        controller.setAppearanceLightNavigationBars(lightStatusBar);
+        boolean lightIconsBackground = lightStatusBar && !ThemeSettings.isBlack(activity);
+        controller.setAppearanceLightStatusBars(lightIconsBackground);
+        controller.setAppearanceLightNavigationBars(lightIconsBackground);
 
         int initialLeft = root.getPaddingLeft();
         int initialTop = root.getPaddingTop();

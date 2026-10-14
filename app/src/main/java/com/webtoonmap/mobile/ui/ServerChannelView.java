@@ -217,7 +217,7 @@ public final class ServerChannelView extends FrameLayout {
 
     private void loadThumbnail(LanServerItem item, ImageView imageView) {
         imageView.setImageDrawable(null);
-        imageView.setBackgroundColor(0xFFE8E8E8);
+        imageView.setBackgroundColor(androidx.core.content.ContextCompat.getColor(activity, R.color.divider));
         if (item == null || !item.hasThumbnail || baseUrl == null) return;
         Bitmap cached = thumbCache.get(item.id);
         if (cached != null && !cached.isRecycled()) {

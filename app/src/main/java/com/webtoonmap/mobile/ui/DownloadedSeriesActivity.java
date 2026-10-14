@@ -25,6 +25,7 @@ public final class DownloadedSeriesActivity extends AppCompatActivity {
     private EpisodeAdapter adapter;
 
     @Override protected void onCreate(Bundle state) {
+        AppTheme.apply(this);
         super.onCreate(state);
         setContentView(R.layout.activity_series);
         SystemBarInsets.apply(this, findViewById(R.id.series_root), true);

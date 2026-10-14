@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="green">#E50914</color>
+    <color name="green_dark">#FF454F</color>
+    <color name="background">#080808</color>
+    <color name="surface">#181818</color>
+    <color name="text_primary">#F5F5F1</color>
+    <color name="text_secondary">#B3B3B3</color>
+    <color name="divider">#333333</color>
+    <color name="episode_viewed">#302023</color>
+    <color name="card_background">#181818</color>
+    <color name="card_resume">#FF454F</color>
+    <color name="delete_text">#FF454F</color>
+    <color name="browse_move">#303030</color>
+    <bool name="light_system_bars">false</bool>
+</resources>

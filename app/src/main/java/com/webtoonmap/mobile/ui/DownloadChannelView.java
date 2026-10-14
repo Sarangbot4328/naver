@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.io.InputStream;
@@ -163,6 +162,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
     }
 
     private void applyFilters() {
+        LibraryFilter.retainAvailableTags(allItems, selectedTags);
         List<SeriesItem> filtered = LibraryFilter.apply(allItems,
                 search.getQuery().toString(), selectedTags);
         adapter.setItems(filtered);
@@ -182,11 +182,7 @@ public final class DownloadChannelView extends android.widget.FrameLayout {
 
     private void chooseTags() {
         search.clearFocus();
-        Map<String, Integer> counts = new TreeMap<>();
-        for (SeriesItem item : allItems) {
-            for (String tag : LibraryFilter.tags(item.tags)) counts.put(tag, counts.getOrDefault(tag, 0) + 1);
-        }
-        for (String tag : selectedTags) counts.putIfAbsent(tag, 0);
+        Map<String, Integer> counts = LibraryFilter.tagCounts(allItems);
         if (counts.isEmpty()) {
             Toast.makeText(getContext(), "등록된 태그가 없습니다.", Toast.LENGTH_SHORT).show();
             return;
