@@ -714,6 +714,10 @@ public final class SeriesDownloadService extends Service {
                         return MarumaruApi.downloadBytes(imageUrl, referer, cookie);
                     }
 
+                    @Override public int imageFailureSkipThreshold(Exception error) {
+                        return MarumaruApi.isMissingImage(error) ? 1 : 0;
+                    }
+
                     @Override public long postEpisodeDelayMs(int completedPosition) {
                         return 1_000L;
                     }
@@ -848,6 +852,7 @@ public final class SeriesDownloadService extends Service {
         }
 
         int current = 0;
+        int skippedImages = 0;
         for (ExternalEpisode episode : episodes) {
             checkCancelled();
             current++;
@@ -909,6 +914,7 @@ public final class SeriesDownloadService extends Service {
             */
             db.upsertEpisode(new EpisodeItem(
                     titleId, episode.number, episode.title, result.saved, false));
+            skippedImages += result.skipped;
             api.episodeCompleted(titleId, episode.number);
             checkCancelled();
             update(label + " ZIP 저장 완료" +
@@ -926,8 +932,9 @@ public final class SeriesDownloadService extends Service {
         }
 
         db.setSeriesStatus(titleId, "complete");
-        update("완료 · " + episodes.size() + "개 회차", episodes.size(), episodes.size());
-        broadcast(sourceName + " 다운로드 완료", true, false);
+        String missingSummary = skippedImages > 0 ? " · 이번 다운로드 " + skippedImages + "장 제외" : "";
+        update("완료 · " + episodes.size() + "개 회차" + missingSummary, episodes.size(), episodes.size());
+        broadcast(sourceName + " 다운로드 완료" + missingSummary, true, false);
     }
     private ExternalEpisodeResult downloadExternalEpisodeWithRetry(
             String titleId, ExternalEpisode episode, String label,

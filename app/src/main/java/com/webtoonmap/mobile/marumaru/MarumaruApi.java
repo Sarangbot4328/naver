@@ -62,6 +62,11 @@ public final class MarumaruApi {
 
     private MarumaruApi() { }
 
+    /** Use only for a page download failure, never for metadata/episode requests. */
+    public static boolean isMissingImage(Exception error) {
+        return error instanceof HttpError && ((HttpError) error).status == 404;
+    }
+
     public static boolean isSeriesKey(String key) {
         return key != null && key.matches(KEY_PREFIX + "[0-9]+");
     }
